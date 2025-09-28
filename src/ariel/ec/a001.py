@@ -71,7 +71,7 @@ class Individual(SQLModel, table=True):
     # ------------------------ FITNESS ------------------------
     requires_eval: bool = Field(default=True, index=True)
     fitness_: float | None = Field(default=None, index=True)
-
+    twisty: bool = Field(default=False, index=True)
     @property
     def fitness(self) -> float:
         if self.fitness_ is None:
@@ -92,18 +92,28 @@ class Individual(SQLModel, table=True):
     # ------------------------ GENOTYPE ------------------------
     requires_init: bool = Field(default=True, index=True)
     genotype_: JSONIterable | None = Field(default=None, sa_column=Column(JSON))
-
+    brain_genotype_: JSONIterable | None = Field(default=None, sa_column=Column(JSON))
     @property
     def genotype(self) -> JSONIterable:
         if self.genotype_ is None:
             msg = "Trying to fetch uninitialized data in genotype!"
             raise ValueError(msg)
         return self.genotype_
-
+    @property
+    def brain_genotype(self) -> JSONIterable:
+        if self.brain_genotype_ is None:
+            msg = "Trying to fetch uninitialized data in genotype!"
+            raise ValueError(msg)
+        return self.brain_genotype_
+    
     @genotype.setter
     def genotype(self, individual_genotype: JSONIterable) -> None:
         self.requires_init = not bool(individual_genotype)
         self.genotype_ = individual_genotype
+
+    @brain_genotype.setter
+    def brain_genotype(self, individual_brain_genotype: JSONIterable) -> None:
+        self.brain_genotype_ = individual_brain_genotype
 
     # ------------------------ TAGS ------------------------
     tags_: dict[JSONType, JSONType] = Field(
