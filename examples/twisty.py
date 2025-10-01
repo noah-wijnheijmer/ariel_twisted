@@ -30,6 +30,8 @@ import mujoco
 import numpy as np
 from rich.console import Console
 from mujoco import viewer
+import torch
+import torch.nn as nn
 
 # Local libraries
 from ariel.body_phenotypes.robogen_lite.config import (NUM_OF_FACES,
@@ -48,6 +50,7 @@ from ariel.utils.video_recorder import VideoRecorder
 from ariel.ec.a001 import Individual
 from ariel.simulation.controllers.controller import Controller
 from ariel.utils.tracker import Tracker
+from ariel.utils.runners import simple_runner
 
 if TYPE_CHECKING:
     from networkx import DiGraph
@@ -185,9 +188,7 @@ def run(
     # add brain genotype to the individual
     individual.brain_genotype = cpg.c
     console.log("Brain genotype:")
-    console.log(individual.brain_genotype) # TODO: REMOVE DEBUG
     console.log("Qpos at start:")
-    console.log(data.qpos) # TODO: REMOVE DEBUG 
 
     # Initialize robot tracker
     mujoco_type_to_find = mujoco.mjtObj.mjOBJ_GEOM
@@ -207,12 +208,25 @@ def run(
 
     mujoco.set_mjcb_control(lambda m, d: ctrl.set_control(m, d, cpg))
 
-    viewer.launch(
-        model=model,
-        data=data,
+    console.log(f"xpos before sim: {tracker.history["xpos"][0]}") # TODO: REMOVE DEBUG
+
+    # This disables visualisation (fastest option)
+    simple_runner(
+        model,
+        data,
+        duration=10,
     )
 
-    # Non-default VideoRecorder options
+    # sim viewer
+    # viewer.launch(
+    #     model=model,
+    #     data=data,
+    #     duration=10
+    # )
+
+    console.log(f"xpos after sim: {tracker.history["xpos"][0]}") # TODO: REMOVE DEBUG
+
+    # # Non-default VideoRecorder options
     # video_recorder = VideoRecorder(output_folder=DATA)
 
     # # Render with video recorder
@@ -232,7 +246,6 @@ def policy(
     """Use feedback term to shift the output of the CPGs."""
     x, _ = cpg.step()
     return x * np.pi / 2
-
 
 if __name__ == "__main__":
     # Test several times
