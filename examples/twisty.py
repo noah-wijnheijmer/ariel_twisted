@@ -133,7 +133,8 @@ def main() -> None:
 
 def run(
     robot: CoreModule,
-    individual
+    individual: Individual,
+    mode: str = "launcher",
 ) -> None:
     """Entry point."""
     # BugFix -> "Python exception raised"
@@ -210,33 +211,39 @@ def run(
 
     console.log(f"xpos before sim: {tracker.history["xpos"][0]}") # TODO: REMOVE DEBUG
 
-    # This disables visualisation (fastest option)
-    simple_runner(
-        model,
-        data,
-        duration=10,
-    )
+    match mode:
+        # Launches interactive viewer
+        case "launcher":
+            viewer.launch(
+                model=model,
+                data=data,
+            )
 
-    # sim viewer
-    # viewer.launch(
-    #     model=model,
-    #     data=data,
-    #     duration=10
-    # )
+        # This disables visualisation (fastest option)
+        case "simple_runner":
+            simple_runner(
+                model,
+                data,
+                duration=30,
+            )
+
+        # Records video of the simulation
+        case "video":
+            path_to_video_folder = str(DATA / "videos")
+            video_recorder = VideoRecorder(output_folder=path_to_video_folder)
+
+            # Render with video recorder
+            video_renderer(
+                model,
+                data,
+                duration=30,
+                video_recorder=video_recorder,
+            )
+        
+        case _:
+            console.log(f"Mode '{mode}' not recognized. No simulation run.")
 
     console.log(f"xpos after sim: {tracker.history["xpos"][0]}") # TODO: REMOVE DEBUG
-
-    # # Non-default VideoRecorder options
-    # video_recorder = VideoRecorder(output_folder=DATA)
-
-    # # Render with video recorder
-    # video_renderer(
-    #     model,
-    #     data,
-    #     duration=30,
-    #     video_recorder=video_recorder,
-    # )
-
 
 def policy(
     model: mujoco.MjModel,  # noqa: ARG001
