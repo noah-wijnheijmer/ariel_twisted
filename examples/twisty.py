@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 import mujoco
 import numpy as np
 from rich.console import Console
+from mujoco import viewer
 
 # Local libraries
 from ariel.body_phenotypes.robogen_lite.config import (NUM_OF_FACES,
@@ -45,6 +46,8 @@ from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
 from ariel.utils.renderers import video_renderer
 from ariel.utils.video_recorder import VideoRecorder
 from ariel.ec.a001 import Individual
+from ariel.simulation.controllers.controller import Controller
+from ariel.utils.tracker import Tracker
 
 if TYPE_CHECKING:
     from networkx import DiGraph
@@ -63,7 +66,7 @@ RNG = np.random.default_rng(SEED)
 
 def create_individual(con_twisty: bool) -> Individual:
     ind = Individual()
-    num_modules = 4
+    num_modules = 20
 
     # "Type" probability space
     type_probability_space = RNG.random(
@@ -181,18 +184,44 @@ def run(
     cpg.reset()
     # add brain genotype to the individual
     individual.brain_genotype = cpg.c
-    mujoco.set_mjcb_control(lambda m, d: policy(m, d, cpg=cpg))
+    console.log("Brain genotype:")
+    console.log(individual.brain_genotype) # TODO: REMOVE DEBUG
+    console.log("Qpos at start:")
+    console.log(data.qpos) # TODO: REMOVE DEBUG 
+
+    # Initialize robot tracker
+    mujoco_type_to_find = mujoco.mjtObj.mjOBJ_GEOM
+    name_to_bind = "core"
+    tracker = Tracker(
+        mujoco_obj_to_find=mujoco_type_to_find,
+        name_to_bind=name_to_bind,
+    )
+    tracker.setup(world.spec, data)
+
+    # Initialize controller
+    ctrl = Controller(
+        controller_callback_function=policy,
+        time_steps_per_ctrl_step=1,
+        tracker=tracker,
+    )
+
+    mujoco.set_mjcb_control(lambda m, d: ctrl.set_control(m, d, cpg))
+
+    viewer.launch(
+        model=model,
+        data=data,
+    )
 
     # Non-default VideoRecorder options
-    video_recorder = VideoRecorder(output_folder=DATA)
+    # video_recorder = VideoRecorder(output_folder=DATA)
 
-    # Render with video recorder
-    video_renderer(
-        model,
-        data,
-        duration=30,
-        video_recorder=video_recorder,
-    )
+    # # Render with video recorder
+    # video_renderer(
+    #     model,
+    #     data,
+    #     duration=30,
+    #     video_recorder=video_recorder,
+    # )
 
 
 def policy(
@@ -202,7 +231,7 @@ def policy(
 ) -> None:
     """Use feedback term to shift the output of the CPGs."""
     x, _ = cpg.step()
-    data.ctrl = x * np.pi / 2
+    return x * np.pi / 2
 
 
 if __name__ == "__main__":
