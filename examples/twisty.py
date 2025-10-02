@@ -30,8 +30,6 @@ import mujoco
 import numpy as np
 from rich.console import Console
 from mujoco import viewer
-import torch
-import torch.nn as nn
 
 # Local libraries
 from ariel.body_phenotypes.robogen_lite.config import (NUM_OF_FACES,
@@ -45,12 +43,17 @@ from ariel.body_phenotypes.robogen_lite.modules.core import CoreModule
 from ariel.simulation.controllers.cpg_with_sensory_feedback import \
     CPGSensoryFeedback
 from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
+# from ariel.simulation.environments import OlympicArena
 from ariel.utils.renderers import video_renderer
 from ariel.utils.video_recorder import VideoRecorder
 from ariel.ec.a001 import Individual
 from ariel.simulation.controllers.controller import Controller
 from ariel.utils.tracker import Tracker
 from ariel.utils.runners import simple_runner
+# from twisty_brain import RobotBrain
+# from evotorch.neuroevolution import NEProblem
+# from evotorch.algorithms import PGPE
+# from evotorch.logging import PandasLogger
 
 if TYPE_CHECKING:
     from networkx import DiGraph
@@ -61,11 +64,40 @@ CWD = Path.cwd()
 DATA = Path(CWD / "__data__" / SCRIPT_NAME)
 DATA.mkdir(exist_ok=True)
 SEED = 40
+
 # twisty indexes (rotations of 45, 135, 225, 315 degrees) 
 TWIST_I = [1, 3, 5, 7]
+
 # Global functions
 console = Console()
 RNG = np.random.default_rng(SEED)
+
+# Global variables
+SPAWN_POS = [0, 0, 0.1]
+NUM_OF_MODULES = 30
+# TARGET_POSITION = [5, 0, 0.5]
+
+# def fitness_function_olympics(history: list[tuple[float, float, float]]) -> float:
+#     """Calculate fitness based on robot's trajectory history.
+
+#     xt, yt, zt = TARGET_POSITION
+#     xc, yc, zc = history[-1]
+
+#     # Minimize the distance --> maximize the negative distance
+#     cartesian_distance = np.sqrt(
+#         (xt - xc) ** 2 + (yt - yc) ** 2 + (zt - zc) ** 2,
+#     )
+#     return -cartesian_distance
+
+def fitness_function_basic(history: list[float]) -> float:
+    xs, ys, _ = SPAWN_POS
+    xe, ye, _ = history[-1]
+
+    # maximize the distance
+    cartesian_distance = np.sqrt(
+        (xs - xe) ** 2 + (ys - ye) ** 2,
+    )
+    return cartesian_distance
 
 def create_individual(con_twisty: bool) -> Individual:
     ind = Individual()
@@ -115,13 +147,19 @@ def create_individual(con_twisty: bool) -> Individual:
     return ind
 
 def main() -> None:
-    """Entry point."""
+    """Entry point for neuroevolution experiment - evolves brains for a population of robots."""
+    console.log("[bold cyan]Starting Neuroevolution Experiment")
+    
+    # Configuration
     population_size = 5
+    
+    # Initialize population of robot morphologies
+    console.log(f"[yellow]Creating population of {population_size} robot morphologies...")
     initial_population = []
-    for i in range(population_size):
+    for _ in range(population_size):
         # twisty is false, no 45 degrees angles
         initial_population.append(create_individual(False))
-    for i in range(population_size):
+    for _ in range(population_size):
         # twisty is True
         initial_population.append(create_individual(True))
     # Print all nodes
@@ -129,7 +167,6 @@ def main() -> None:
         core = construct_mjspec_from_graph(ind.genotype)
         # Simulate the robot
         run(core, ind)
-
 
 def run(
     robot: CoreModule,
@@ -156,7 +193,7 @@ def run(
         robot.spec.geoms[i].rgba[-1] = 0.5
 
     # Spawn the robot at the world
-    world.spawn(robot.spec)
+    world.spawn(robot.spec, spawn_position=SPAWN_POS)
 
     # Compile the model
     model = world.spec.compile()
@@ -188,8 +225,6 @@ def run(
     cpg.reset()
     # add brain genotype to the individual
     individual.brain_genotype = cpg.c
-    console.log("Brain genotype:")
-    console.log("Qpos at start:")
 
     # Initialize robot tracker
     mujoco_type_to_find = mujoco.mjtObj.mjOBJ_GEOM
@@ -243,13 +278,13 @@ def run(
         case _:
             console.log(f"Mode '{mode}' not recognized. No simulation run.")
 
-    console.log(f"xpos after sim: {tracker.history["xpos"][0]}") # TODO: REMOVE DEBUG
+    # return fitness_function(tracker.history["xpos"])
 
 def policy(
     model: mujoco.MjModel,  # noqa: ARG001
     data: mujoco.MjData,
     cpg: CPGSensoryFeedback,
-) -> None:
+) -> np.ndarray:
     """Use feedback term to shift the output of the CPGs."""
     x, _ = cpg.step()
     return x * np.pi / 2
