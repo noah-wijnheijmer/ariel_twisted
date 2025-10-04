@@ -1,3 +1,30 @@
+"""TODO(jmdm): description of script.
+
+Author:     Fullitu
+Date:       2025-10-04
+Py Ver:     3.12
+Status:     In progress ⚙️
+
+Notes
+-----
+    For now everything is copied from a004, exact implementation needed. 
+    Look into CGA approach (papers on the WA group)
+
+References
+----------
+    
+
+Todo
+----
+    [ ] documentation
+    [ ] implement crossover
+    [ ] implement mutation
+    [ ] implement evaluation (import from main twisty script?)
+    [ ] implement survivor selection
+    [ ] implement main evolve() method
+
+"""
+
 import random
 from rich.console import Console
 
@@ -109,35 +136,36 @@ class NeuroEvolution:
         # return population
         pass
 
-    def main(self) -> None:
+    def evolve(self) -> None:
         """Entry point."""
-        # Create initial population
-        population_list = [self.create_individual() for _ in range(10)]
-        population_list = self.evaluate(population_list)
+        # # Create initial population
+        # population_list = [self.create_individual() for _ in range(10)]
+        # population_list = self.evaluate(population_list)
 
-        # Create EA steps
-        ops = [
-            EAStep("parent_selection", self.parent_selection),
-            EAStep("crossover", self.crossover),
-            EAStep("mutation", self.mutation),
-            EAStep("evaluation", self.evaluate),
-            EAStep("survivor_selection", self.survivor_selection),
-        ]
+        # # Create EA steps
+        # ops = [
+        #     EAStep("parent_selection", self.parent_selection),
+        #     EAStep("crossover", self.crossover),
+        #     EAStep("mutation", self.mutation),
+        #     EAStep("evaluation", self.evaluate),
+        #     EAStep("survivor_selection", self.survivor_selection),
+        # ]
 
-        # Initialize EA
-        ea = EA(
-            population_list,
-            operations=ops,
-            num_of_generations=100,
-        )
+        # # Initialize EA
+        # ea = EA(
+        #     population_list,
+        #     operations=ops,
+        #     num_of_generations=100,
+        # )
 
-        ea.run()
+        # ea.run()
 
-        best = ea.get_solution(only_alive=False)
-        console.log(best)
+        # best = ea.get_solution(only_alive=False)
+        # console.log(best)
 
-        median = ea.get_solution("median", only_alive=False)
-        console.log(median)
+        # median = ea.get_solution("median", only_alive=False)
+        # console.log(median)
 
-        worst = ea.get_solution("worst", only_alive=False)
-        console.log(worst)
+        # worst = ea.get_solution("worst", only_alive=False)
+        # console.log(worst)
+        pass
