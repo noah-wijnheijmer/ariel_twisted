@@ -40,8 +40,6 @@ import mujoco
 import numpy as np
 from rich.console import Console
 from mujoco import viewer
-import torch
-import torch.nn as nn
 
 # Local libraries
 from ariel.body_phenotypes.robogen_lite.config import (
@@ -60,9 +58,17 @@ from ariel.simulation.controllers.cpg_with_sensory_feedback import (
     CPGSensoryFeedback
 )
 from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
+# from ariel.simulation.environments import OlympicArena
 from ariel.utils.renderers import video_renderer
 from ariel.utils.video_recorder import VideoRecorder
 from ariel.ec.a001 import Individual
+from ariel.simulation.controllers.controller import Controller
+from ariel.utils.tracker import Tracker
+from ariel.utils.runners import simple_runner
+# from twisty_brain import RobotBrain
+# from evotorch.neuroevolution import NEProblem
+# from evotorch.algorithms import PGPE
+# from evotorch.logging import PandasLogger
 from ariel.ec.a000 import IntegerMutator
 from networkx import DiGraph
 
@@ -72,11 +78,40 @@ CWD = Path.cwd()
 DATA = Path(CWD / "__data__" / SCRIPT_NAME)
 DATA.mkdir(exist_ok=True)
 SEED = 40
-# twisty indexes (rotations of 45, 135, 225, 315 degrees)
+
+# twisty indexes (rotations of 45, 135, 225, 315 degrees) 
 TWIST_I = [1, 3, 5, 7]
+
 # Global functions
 console = Console()
 RNG = np.random.default_rng(SEED)
+
+# Global variables
+SPAWN_POS = [0, 0, 0.1]
+NUM_OF_MODULES = 30
+# TARGET_POSITION = [5, 0, 0.5]
+
+# def fitness_function_olympics(history: list[tuple[float, float, float]]) -> float:
+#     """Calculate fitness based on robot's trajectory history.
+
+#     xt, yt, zt = TARGET_POSITION
+#     xc, yc, zc = history[-1]
+
+#     # Minimize the distance --> maximize the negative distance
+#     cartesian_distance = np.sqrt(
+#         (xt - xc) ** 2 + (yt - yc) ** 2 + (zt - zc) ** 2,
+#     )
+#     return -cartesian_distance
+
+def fitness_function_basic(history: list[float]) -> float:
+    xs, ys, _ = SPAWN_POS
+    xe, ye, _ = history[-1]
+
+    # maximize the distance
+    cartesian_distance = np.sqrt(
+        (xs - xe) ** 2 + (ys - ye) ** 2,
+    )
+    return cartesian_distance
 
 def create_individual(con_twisty: bool) -> Individual:
     ind = Individual()
@@ -617,7 +652,7 @@ def main() -> None:
     run(champion_robot, champion)
 
 
-def run(robot: CoreModule, individual: Individual) -> None:
+def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None:
     """Entry point."""
     # BugFix -> "Python exception raised"
     mujoco.set_mjcb_control(None)
@@ -630,7 +665,7 @@ def run(robot: CoreModule, individual: Individual) -> None:
         robot.spec.geoms[i].rgba[-1] = 0.5
 
     # Spawn the robot at the world
-    world.spawn(robot.spec)
+    world.spawn(robot.spec, spawn_position=SPAWN_POS)
 
     # Compile the model
     model = world.spec.compile()
@@ -659,25 +694,66 @@ def run(robot: CoreModule, individual: Individual) -> None:
     cpg.reset()
     # add brain genotype to the individual
     individual.brain_genotype = cpg.c
-    mujoco.set_mjcb_control(lambda m, d: policy(m, d, cpg=cpg))
 
-    # Non-default VideoRecorder options
-    video_recorder = VideoRecorder(output_folder=DATA)
+    # Initialize robot tracker
+    mujoco_type_to_find = mujoco.mjtObj.mjOBJ_GEOM
+    name_to_bind = "core"
+    tracker = Tracker(
+        mujoco_obj_to_find=mujoco_type_to_find,
+        name_to_bind=name_to_bind,
+    )
+    tracker.setup(world.spec, data)
 
-    # Render with video recorder
-    video_renderer(
-        model,
-        data,
-        duration=30,
-        video_recorder=video_recorder,
+    # Initialize controller
+    ctrl = Controller(
+        controller_callback_function=policy,
+        time_steps_per_ctrl_step=1,
+        tracker=tracker,
     )
 
+    mujoco.set_mjcb_control(lambda m, d: ctrl.set_control(m, d, cpg))
+
+    console.log(f"xpos before sim: {tracker.history["xpos"][0]}") # TODO: REMOVE DEBUG
+
+    match mode:
+        # Launches interactive viewer
+        case "launcher":
+            viewer.launch(
+                model=model,
+                data=data,
+            )
+
+        # This disables visualisation (fastest option)
+        case "simple_runner":
+            simple_runner(
+                model,
+                data,
+                duration=30,
+            )
+
+        # Records video of the simulation
+        case "video":
+            path_to_video_folder = str(DATA / "videos")
+            video_recorder = VideoRecorder(output_folder=path_to_video_folder)
+
+            # Render with video recorder
+            video_renderer(
+                model,
+                data,
+                duration=30,
+                video_recorder=video_recorder,
+            )
+        
+        case _:
+            console.log(f"Mode '{mode}' not recognized. No simulation run.")
+
+    # return fitness_function(tracker.history["xpos"])
 
 def policy(
     model: mujoco.MjModel,  # noqa: ARG001
     data: mujoco.MjData,
     cpg: CPGSensoryFeedback,
-) -> None:
+) -> np.ndarray:
     """Use feedback term to shift the output of the CPGs."""
     x, _ = cpg.step()
     data.ctrl = x * np.pi / 2

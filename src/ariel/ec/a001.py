@@ -72,6 +72,7 @@ class Individual(SQLModel, table=True):
     requires_eval: bool = Field(default=True, index=True)
     fitness_: float | None = Field(default=None, index=True)
     twisty: bool = Field(default=False, index=True)
+    
     @property
     def fitness(self) -> float:
         if self.fitness_ is None:
@@ -93,6 +94,7 @@ class Individual(SQLModel, table=True):
     requires_init: bool = Field(default=True, index=True)
     genotype_: JSONIterable | None = Field(default=None, sa_column=Column(JSON))
     brain_genotype_: JSONIterable | None = Field(default=None, sa_column=Column(JSON))
+
     @property
     def genotype(self) -> JSONIterable:
         if self.genotype_ is None:
