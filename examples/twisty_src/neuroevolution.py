@@ -24,49 +24,74 @@ Todo
     [ ] implement main evolve() method
 
 """
-
-import random
+from pathlib import Path
+import numpy as np
+from collections.abc import Callable
+import mujoco
+from mujoco import viewer
 from rich.console import Console
+import copy
 
-from ariel.ec.a001 import Individual
-from ariel.ec.a004 import EA, EAStep, EASettings, Population
-from twisty_brain import RobotBrain
+from ariel.body_phenotypes.robogen_lite.constructor import construct_mjspec_from_graph
+# from ariel.ec.a000 import IntegersGenerator
+from ariel.ec.a001 import Individual, JSONIterable
+# from ariel.ec.a004 import EA, EAStep, EASettings, Population
+from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
+from ariel.utils.tracker import Tracker
+from ariel.simulation.controllers.controller import Controller
+from twisty_src.twisty_brain import RobotBrain
+# from twisty import EASettings, DATA, SCRIPT_NAME, SEED
+from ariel.utils.renderers import video_renderer
+from ariel.utils.video_recorder import VideoRecorder
+from ariel.utils.runners import simple_runner
 
 console = Console()
 
+# Global constants
+# SCRIPT_NAME = __file__.split("/")[-1][:-3]
+# CWD = Path.cwd()
+# DATA = Path(CWD / "__data__" / SCRIPT_NAME)
+# DATA.mkdir(exist_ok=True)
+SEED = 40
+
 class NeuroEvolution:
+    type Population = list[Individual]
+
     def __init__(
             self,
-            population_size: int = 10,
-            num_generations: int = 100,
-            nn_input_size: int = 10,
-            nn_output_size: int = 4,
-            nn_hidden_layers: list[int] | None = 3,
+            fitness_function: Callable,
+            config, # EASettings
             ):
-        self.config = EASettings()
+        self.config = config
+        self.fitness_function = fitness_function
+        self.rng = np.random.default_rng(SEED)
 
-    def create_individual(self) -> RobotBrain:
-        return RobotBrain(
-            input_size=self.config.nn_input_size,
-            output_size=self.config.nn_output_size,
-            hidden_layers=self.config.nn_hidden_layers
+    def create_individual(self, input_size, output_size, hidden_layers) -> Individual:
+        new_brain = RobotBrain(
+            input_size=input_size,
+            output_size=output_size,
+            hidden_layers=hidden_layers
         )
 
+        ind = Individual()
+        ind.genotype = new_brain.get_weights_as_vector().tolist()
+        return ind
+
     def parent_selection(self, population: Population) -> Population:
-        random.shuffle(population)
-        for idx in range(0, len(population) - 1, 2):
-            ind_i = population[idx]
-            ind_j = population[idx + 1]
+        # random.shuffle(population)
+        # for idx in range(0, len(population) - 1, 2):
+        #     ind_i = population[idx]
+        #     ind_j = population[idx + 1]
 
-            # Compare fitness values
-            if ind_i.fitness > ind_j.fitness and self.config.is_maximisation:
-                ind_i.tags = {"ps": True}
-                ind_j.tags = {"ps": False}
-            else:
-                ind_i.tags = {"ps": False}
-                ind_j.tags = {"ps": True}
-        return population
-
+        #     # Compare fitness values
+        #     if ind_i.fitness > ind_j.fitness and self.config.is_maximisation:
+        #         ind_i.tags = {"ps": True}
+        #         ind_j.tags = {"ps": False}
+        #     else:
+        #         ind_i.tags = {"ps": False}
+        #         ind_j.tags = {"ps": True}
+        # return population
+        pass
 
     def crossover(self, population: Population) -> Population:
         # parents = [ind for ind in population if ind.tags.get("ps", False)]
@@ -108,13 +133,116 @@ class NeuroEvolution:
         # return population
         pass
 
-    def evaluate(self, population: Population) -> Population:
-        # for ind in population:
-        #     if ind.requires_eval:
-        #         # Count ones in genotype as fitness
-        #         ind.fitness = sum(1 for gene in ind.genotype if gene == 1)
-        # return population
-        pass
+    def evaluate(self, population: Population, nn_input_size: int, nn_output_size: int) -> Population:
+        for ind in population:
+            history = self.run(ind, nn_input_size, nn_output_size)
+            ind.fitness = self.fitness_function(history)
+
+        return population
+
+    def run(
+        self,
+        ind: Individual,
+        nn_input_size: int,
+        nn_output_size: int,
+        mode: str = "simple",
+    ) -> None:
+        """Entry point."""
+
+        # THIS IS CRAZY INEFFICIENT CHANGE IT LATER
+        # ------------------------------------------------------------------ #
+        brain = RobotBrain(
+            input_size=nn_input_size,
+            output_size=nn_output_size,
+            hidden_layers=self.config.nn_hidden_layers,
+        )
+        brain.set_weights_from_vector(ind.genotype)    
+        # ------------------------------------------------------------------ #
+
+        mujoco.set_mjcb_control(None)
+
+        # MuJoCo basics
+        world = SimpleFlatWorld()
+
+        # Set random colors for geoms
+        for i in range(len(self.robot.spec.geoms)):
+            self.robot.spec.geoms[i].rgba[-1] = 0.5
+
+        # Spawn the robot at the world
+        world.spawn(self.robot.spec, spawn_position=self.config.starting_pos)
+
+        # Compile the model
+        model = world.spec.compile()
+        data = mujoco.MjData(model)
+
+        # Reset state and time of simulation
+        mujoco.mj_resetData(model, data)
+
+        # TODO save genotype
+        # Save the model to XML
+        # xml = world.spec.to_xml()
+        # with (DATA / f"{SCRIPT_NAME}.xml").open("w", encoding="utf-8") as f:
+        #     f.write(xml)
+
+        # Number of actuators and DoFs
+        console.log(f"DoF (model.nv): {model.nv}, Actuators (model.nu): {model.nu}")
+
+        # Define action specification and set policy
+        data.ctrl = self.rng.normal(scale=0.1, size=model.nu)
+
+        # Initialize robot tracker
+        mujoco_type_to_find = mujoco.mjtObj.mjOBJ_GEOM
+        name_to_bind = "core"
+        tracker = Tracker(
+            mujoco_obj_to_find=mujoco_type_to_find,
+            name_to_bind=name_to_bind,
+        )
+        tracker.setup(world.spec, data)
+
+        # Initialize controller
+        ctrl = Controller(
+            controller_callback_function=brain.forward_control,
+            time_steps_per_ctrl_step=1,
+            tracker=tracker,
+        )
+
+        mujoco.set_mjcb_control(lambda m, d: ctrl.set_control(m, d))
+
+        console.log(f"xpos before sim: {tracker.history["xpos"][0]}") # TODO: REMOVE DEBUG
+
+        match mode:
+            # Launches interactive viewer
+            case "launcher":
+                viewer.launch(
+                    model=model,
+                    data=data,
+                )
+
+            # This disables visualisation (fastest option)
+            case "simple_runner":
+                simple_runner(
+                    model,
+                    data,
+                    duration=30,
+                )
+
+            # Records video of the simulation TODO, alongside saving genoptyps
+            # case "video":
+                # path_to_video_folder = str(DATA / "videos") 
+                # video_recorder = VideoRecorder(output_folder=path_to_video_folder)
+
+                # # Render with video recorder
+                # video_renderer(
+                #     model,
+                #     data,
+                #     duration=30,
+                #     video_recorder=video_recorder,
+                # )
+            
+            case _:
+                console.log(f"Mode '{mode}' not recognized. No simulation run.")
+
+        return self.fitness_function(tracker.history["xpos"])
 
     def survivor_selection(self, population: Population) -> Population:
         # random.shuffle(population)
@@ -136,8 +264,38 @@ class NeuroEvolution:
         # return population
         pass
 
-    def evolve(self) -> None:
-        """Entry point."""
+    def evolve(self, original_ind: Individual) -> list[JSONIterable]:
+        
+        """
+
+        Runs the full neuroevolution process, with respect to the given body and config.
+        Returns best robobrain for given body and score that this brain achived.
+        
+        """
+
+        # Generate the model and data to determine input + output sizes of NN
+
+        mujoco.set_mjcb_control(None) # IDK WHY THIS NEEDS TO BE HERE BUT IT WORKS SO I'M NOT COMPLAINING
+        self.robot = construct_mjspec_from_graph(original_ind.genotype)
+
+        world = SimpleFlatWorld()
+        world.spawn(self.robot.spec, spawn_position=self.config.starting_pos)
+
+        model = world.spec.compile()
+        data = mujoco.MjData(model)
+
+        nn_input_size = len(data.qpos)
+        nn_output_size = model.nu
+        mujoco.mj_resetData(model, data)
+
+        # Create initial population
+        population = [self.create_individual(nn_input_size, nn_output_size, self.config.nn_hidden_layers) for _ in range(self.config.population_size)]
+        
+        for _ in range(self.config.num_of_generations):
+            population = self.evaluate(population, nn_input_size, nn_output_size)
+            print([ind.fitness for ind in population])
+
+        return [ind.genotype for ind in population]
         # # Create initial population
         # population_list = [self.create_individual() for _ in range(10)]
         # population_list = self.evaluate(population_list)
@@ -168,4 +326,5 @@ class NeuroEvolution:
 
         # worst = ea.get_solution("worst", only_alive=False)
         # console.log(worst)
-        pass
+
+        

@@ -50,10 +50,11 @@ from ariel.ec.a001 import Individual
 from ariel.simulation.controllers.controller import Controller
 from ariel.utils.tracker import Tracker
 from ariel.utils.runners import simple_runner
-# from twisty_brain import RobotBrain
-# from evotorch.neuroevolution import NEProblem
-# from evotorch.algorithms import PGPE
-# from evotorch.logging import PandasLogger
+from pydantic_settings import BaseSettings
+from twisty_src.neuroevolution import NeuroEvolution
+
+# DEBUG
+import copy
 
 if TYPE_CHECKING:
     from networkx import DiGraph
@@ -63,7 +64,7 @@ SCRIPT_NAME = __file__.split("/")[-1][:-3]
 CWD = Path.cwd()
 DATA = Path(CWD / "__data__" / SCRIPT_NAME)
 DATA.mkdir(exist_ok=True)
-SEED = 40
+SEED = 42
 
 # twisty indexes (rotations of 45, 135, 225, 315 degrees) 
 TWIST_I = [1, 3, 5, 7]
@@ -89,8 +90,22 @@ NUM_OF_MODULES = 30
 #     )
 #     return -cartesian_distance
 
+class EASettings(BaseSettings):
+
+    # world: SimpleFlatWorld = SimpleFlatWorld()
+    starting_pos: list[float] = [0, 0, 0.1]
+
+    population_size: int = 1
+    num_of_generations: int = 1
+    
+    nn_hidden_layers: list[int] = [64, 32]
+    
+    is_maximisation: bool = True
+
+config = EASettings()
+
 def fitness_function_basic(history: list[float]) -> float:
-    xs, ys, _ = SPAWN_POS
+    xs, ys, _ = config.starting_pos
     xe, ye, _ = history[-1]
 
     # maximize the distance
@@ -101,7 +116,7 @@ def fitness_function_basic(history: list[float]) -> float:
 
 def create_individual(con_twisty: bool) -> Individual:
     ind = Individual()
-    num_modules = 20
+    num_modules = 3
 
     # "Type" probability space
     type_probability_space = RNG.random(
@@ -163,10 +178,16 @@ def main() -> None:
         # twisty is True
         initial_population.append(create_individual(True))
     # Print all nodes
+    NE = NeuroEvolution(
+            fitness_function=fitness_function_basic,
+            config=config,
+        )
     for ind in initial_population:
-        core = construct_mjspec_from_graph(ind.genotype)
+        # core = construct_mjspec_from_graph(ind.genotype)
+        brains = NE.evolve(ind)
+        print(brains)
         # Simulate the robot
-        run(core, ind)
+        # run(core, ind)
 
 def run(
     robot: CoreModule,
@@ -176,6 +197,10 @@ def run(
     """Entry point."""
     # BugFix -> "Python exception raised"
     mujoco.set_mjcb_control(None)
+    print("Number of actuators:")
+    print(copy.copy(robot).spec.compile().nu)
+
+    # mujoco.set_mjcb_control(None)
 
     # # MuJoCo configuration
     # viz_options = mujoco.MjvOption()  # visualization of various elements
@@ -277,7 +302,11 @@ def run(
         
         case _:
             console.log(f"Mode '{mode}' not recognized. No simulation run.")
-
+    print(20 * "-")
+    print("NU vs QPOS")
+    print(model.nu)
+    print(len(data.qpos))
+    print(20 * "-")
     # return fitness_function(tracker.history["xpos"])
 
 def policy(
@@ -292,3 +321,11 @@ def policy(
 if __name__ == "__main__":
     # Test several times
     main()
+
+# if __name__ == "__main__":
+    # world = SimpleFlatWorld()
+    # robot = construct_mjspec_from_graph(create_individual(con_twisty=True).genotype)
+    # print(robot.spec.compile().nu)
+
+    # data = mujoco.MjData(model)
+    # print(data.qpos)

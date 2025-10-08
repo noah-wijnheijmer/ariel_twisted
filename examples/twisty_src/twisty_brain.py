@@ -5,6 +5,7 @@ modular robots through neuroevolution.
 """
 
 # Import third-party libraries
+import mujoco
 import torch
 import torch.nn as nn
 import numpy as np
@@ -18,9 +19,9 @@ class RobotBrain(nn.Module):
     Parameters
     ----------
     input_size : int
-        Number of input neurons.
+        Number of input neurons. (Number of actuators)
     output_size : int
-        Number of output neurons.
+        Number of output neurons. (qpos size)
     hidden_layers : list[int]
         List of hidden layer sizes.
     """
@@ -65,6 +66,14 @@ class RobotBrain(nn.Module):
                 nn.init.xavier_normal_(layer.weight, gain=0.5)
                 nn.init.zeros_(layer.bias)
     
+    def forward_control(self,
+                        data: mujoco.MjData,
+                        model: mujoco.MjModel) -> np.ndarray:
+        """Forward pass for control inputs."""
+        state_tensor = torch.tensor(data.qpos, dtype=torch.float32).unsqueeze(0)
+
+        return self.network(state_tensor).detach().numpy()
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the network."""
         return self.network(x)
@@ -93,6 +102,7 @@ class RobotBrain(nn.Module):
             Flattened array of all weights and biases to set in the network.
             Must match the total number of parameters in the network.
         """
+        weight_vector = np.asarray(weight_vector)
         idx = 0
         for param in self.parameters():
             param_size = param.numel()
