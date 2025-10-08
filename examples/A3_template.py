@@ -130,18 +130,27 @@ def show_xpos_history(history: list[float]) -> None:
 def nn_controller(
     model: mj.MjModel,
     data: mj.MjData,
+    weights: npt.NDArray[np.float64] | None = None,
 ) -> npt.NDArray[np.float64]:
     # Simple 3-layer neural network
     input_size = len(data.qpos)
     hidden_size = 8
     output_size = model.nu
 
-    # Initialize the networks weights randomly
-    # Normally, you would use the genes of an individual as the weights,
-    # Here we set them randomly for simplicity.
-    w1 = RNG.normal(loc=0.0138, scale=0.5, size=(input_size, hidden_size))
-    w2 = RNG.normal(loc=0.0138, scale=0.5, size=(hidden_size, hidden_size))
-    w3 = RNG.normal(loc=0.0138, scale=0.5, size=(hidden_size, output_size))
+    if weights is None:
+        # Initialize the networks weights randomly for backward compatibility
+        w1 = RNG.normal(loc=0.0138, scale=0.5, size=(input_size, hidden_size))
+        w2 = RNG.normal(loc=0.0138, scale=0.5, size=(hidden_size, hidden_size))
+        w3 = RNG.normal(loc=0.0138, scale=0.5, size=(hidden_size, output_size))
+    else:
+        # Use provided weights from evolution
+        w1_size = input_size * hidden_size
+        w2_size = hidden_size * hidden_size
+        w3_size = hidden_size * output_size
+        
+        w1 = weights[:w1_size].reshape(input_size, hidden_size)
+        w2 = weights[w1_size:w1_size+w2_size].reshape(hidden_size, hidden_size)
+        w3 = weights[w1_size+w2_size:w1_size+w2_size+w3_size].reshape(hidden_size, output_size)
 
     # Get inputs, in this case the positions of the actuator motors (hinges)
     inputs = data.qpos
@@ -236,43 +245,240 @@ def experiment(
     # ==================================================================== #
 
 
-def main() -> None:
-    """Entry point."""
-    # ? ------------------------------------------------------------------ #
+# === EVOLUTIONARY ALGORITHM FUNCTIONS === #
+
+def create_individual() -> dict[str, Any]:
+    """Create an individual with body and brain genes."""
     genotype_size = 64
+    
+    # Body genes (fixed for this assignment)
     type_p_genes = RNG.random(genotype_size).astype(np.float32)
     conn_p_genes = RNG.random(genotype_size).astype(np.float32)
     rot_p_genes = RNG.random(genotype_size).astype(np.float32)
+    
+    # Neural network weights (what we're evolving)
+    # We'll calculate exact size during first evaluation
+    brain_genes = RNG.normal(0.0, 0.5, size=1000).astype(np.float32)  # Start with large array
+    
+    return {
+        'body': [type_p_genes, conn_p_genes, rot_p_genes],
+        'brain': brain_genes,
+        'fitness': -float('inf')
+    }
 
-    genotype = [
-        type_p_genes,
-        conn_p_genes,
-        rot_p_genes,
-    ]
+
+def evaluate_individual(individual: dict[str, Any]) -> float:
+    """Evaluate fitness of one individual."""
+    try:
+        # Create robot from body genes
+        nde = NeuralDevelopmentalEncoding(number_of_modules=NUM_OF_MODULES)
+        p_matrices = nde.forward(individual['body'])
+        
+        hpd = HighProbabilityDecoder(NUM_OF_MODULES)
+        robot_graph = hpd.probability_matrices_to_graph(
+            p_matrices[0], p_matrices[1], p_matrices[2]
+        )
+        
+        core = construct_mjspec_from_graph(robot_graph)
+        
+        # Set up tracker
+        tracker = Tracker(
+            mujoco_obj_to_find=mj.mjtObj.mjOBJ_GEOM,
+            name_to_bind="core",
+        )
+        
+        # Create controller with evolved weights
+        def controller_with_weights(model: mj.MjModel, data: mj.MjData) -> npt.NDArray[np.float64]:
+            # Calculate required weights size
+            input_size = len(data.qpos)
+            hidden_size = 8
+            output_size = model.nu
+            total_weights = input_size * hidden_size + hidden_size * hidden_size + hidden_size * output_size
+            
+            # Resize brain if needed
+            if len(individual['brain']) != total_weights:
+                if len(individual['brain']) < total_weights:
+                    # Extend with random values
+                    extra = RNG.normal(0.0, 0.5, size=total_weights - len(individual['brain']))
+                    individual['brain'] = np.concatenate([individual['brain'], extra]).astype(np.float32)
+                else:
+                    # Truncate
+                    individual['brain'] = individual['brain'][:total_weights]
+            
+            return nn_controller(model, data, individual['brain'])
+        
+        ctrl = Controller(
+            controller_callback_function=controller_with_weights,
+            tracker=tracker,
+        )
+        
+        # Run simulation (headless for speed)
+        experiment(robot=core, controller=ctrl, mode="simple")
+        
+        # Calculate fitness
+        fitness = fitness_function(tracker.history["xpos"][0])
+        return fitness
+        
+    except Exception as e:
+        console.log(f"Error evaluating individual: {e}")
+        return -float('inf')
+
+
+def tournament_selection(population: list[dict[str, Any]], tournament_size: int = 3) -> dict[str, Any]:
+    """Select individual using tournament selection."""
+    tournament = RNG.choice(population, size=tournament_size, replace=False)
+    return max(tournament, key=lambda x: x['fitness'])
+
+
+def crossover(parent1: dict[str, Any], parent2: dict[str, Any], crossover_rate: float = 0.7) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Single-point crossover for brain weights."""
+    child1 = {
+        'body': parent1['body'].copy(),
+        'brain': parent1['brain'].copy(),
+        'fitness': -float('inf')
+    }
+    child2 = {
+        'body': parent2['body'].copy(), 
+        'brain': parent2['brain'].copy(),
+        'fitness': -float('inf')
+    }
+    
+    if RNG.random() < crossover_rate:
+        # Crossover brain weights only
+        min_length = min(len(parent1['brain']), len(parent2['brain']))
+        crossover_point = RNG.integers(1, min_length)
+        
+        child1['brain'][:crossover_point] = parent2['brain'][:crossover_point]
+        child2['brain'][:crossover_point] = parent1['brain'][:crossover_point]
+    
+    return child1, child2
+
+
+def mutate(individual: dict[str, Any], mutation_rate: float = 0.1, mutation_strength: float = 0.1) -> dict[str, Any]:
+    """Gaussian mutation for brain weights."""
+    mutated = {
+        'body': individual['body'].copy(),
+        'brain': individual['brain'].copy(),
+        'fitness': -float('inf')
+    }
+    
+    # Mutate brain weights
+    for i in range(len(mutated['brain'])):
+        if RNG.random() < mutation_rate:
+            mutated['brain'][i] += RNG.normal(0, mutation_strength)
+    
+    return mutated
+
+
+def evolutionary_algorithm() -> dict[str, Any]:
+    """Main evolutionary algorithm loop."""
+    POPULATION_SIZE = 10  # Smaller for demo
+    GENERATIONS = 5       # Fewer generations for demo
+    MUTATION_RATE = 0.1
+    CROSSOVER_RATE = 0.7
+    ELITISM = 2  # Keep best 2 individuals
+    
+    console.log(f"Starting evolution: {POPULATION_SIZE} individuals, {GENERATIONS} generations")
+    
+    # Initialize population
+    population = [create_individual() for _ in range(POPULATION_SIZE)]
+    
+    # Fixed body for all individuals (use same body throughout evolution)
+    fixed_body = population[0]['body']
+    for individual in population:
+        individual['body'] = fixed_body
+    
+    best_fitness_history = []
+    
+    for generation in range(GENERATIONS):
+        console.log(f"Generation {generation + 1}/{GENERATIONS}")
+        
+        # Evaluate all individuals
+        for i, individual in enumerate(population):
+            individual['fitness'] = evaluate_individual(individual)
+            if (i + 1) % 5 == 0:
+                console.log(f"  Evaluated {i + 1}/{POPULATION_SIZE} individuals")
+        
+        # Sort by fitness (best first)
+        population.sort(key=lambda x: x['fitness'], reverse=True)
+        
+        # Track best fitness
+        best_fitness = population[0]['fitness']
+        avg_fitness = np.mean([ind['fitness'] for ind in population])
+        best_fitness_history.append(best_fitness)
+        
+        console.log(f"  Best fitness: {best_fitness:.3f}, Average: {avg_fitness:.3f}")
+        
+        # Create next generation
+        new_population = []
+        
+        # Elitism: keep best individuals
+        for i in range(ELITISM):
+            elite = {
+                'body': population[i]['body'].copy(),
+                'brain': population[i]['brain'].copy(),
+                'fitness': -float('inf')
+            }
+            new_population.append(elite)
+        
+        # Generate offspring
+        while len(new_population) < POPULATION_SIZE:
+            parent1 = tournament_selection(population)
+            parent2 = tournament_selection(population)
+            
+            child1, child2 = crossover(parent1, parent2, CROSSOVER_RATE)
+            child1 = mutate(child1, MUTATION_RATE)
+            child2 = mutate(child2, MUTATION_RATE)
+            
+            new_population.extend([child1, child2])
+        
+        population = new_population[:POPULATION_SIZE]
+    
+    # Return best individual
+    final_population = population[:]
+    for individual in final_population:
+        individual['fitness'] = evaluate_individual(individual)
+    
+    best_individual = max(final_population, key=lambda x: x['fitness'])
+    
+    console.log(f"Evolution complete! Best fitness: {best_individual['fitness']:.3f}")
+    console.log(f"Fitness progression: {best_fitness_history}")
+    
+    return best_individual
+
+
+def main() -> None:
+    """Entry point."""
+    # Run evolutionary algorithm
+    best_individual = evolutionary_algorithm()
+    
+    # Test the best individual with visualization
+    console.log("Testing best individual with visualization...")
+    
+    # Use the best individual's genes
+    genotype = best_individual['body']
 
     nde = NeuralDevelopmentalEncoding(number_of_modules=NUM_OF_MODULES)
     p_matrices = nde.forward(genotype)
 
     # Decode the high-probability graph
     hpd = HighProbabilityDecoder(NUM_OF_MODULES)
-    robot_graph: DiGraph[Any] = hpd.probability_matrices_to_graph(
+    robot_graph = hpd.probability_matrices_to_graph(
         p_matrices[0],
         p_matrices[1],
         p_matrices[2],
     )
 
-    # ? ------------------------------------------------------------------ #
     # Save the graph to a file
     save_graph_as_json(
         robot_graph,
         DATA / "robot_graph.json",
     )
 
-    # ? ------------------------------------------------------------------ #
-    # Print all nodes
+    # Build the robot
     core = construct_mjspec_from_graph(robot_graph)
 
-    # ? ------------------------------------------------------------------ #
+    # Set up tracker
     mujoco_type_to_find = mj.mjtObj.mjOBJ_GEOM
     name_to_bind = "core"
     tracker = Tracker(
@@ -280,11 +486,12 @@ def main() -> None:
         name_to_bind=name_to_bind,
     )
 
-    # ? ------------------------------------------------------------------ #
-    # Simulate the robot
+    # Create controller using the evolved brain weights
+    def evolved_controller(model: mj.MjModel, data: mj.MjData) -> npt.NDArray[np.float64]:
+        return nn_controller(model, data, best_individual["brain"])
+
     ctrl = Controller(
-        controller_callback_function=nn_controller,
-        # controller_callback_function=random_move,
+        controller_callback_function=evolved_controller,
         tracker=tracker,
     )
 
@@ -293,9 +500,10 @@ def main() -> None:
     show_xpos_history(tracker.history["xpos"][0])
 
     fitness = fitness_function(tracker.history["xpos"][0])
-    msg = f"Fitness of generated robot: {fitness}"
+    msg = f"Best evolved robot fitness: {fitness}"
     console.log(msg)
 
 
 if __name__ == "__main__":
     main()
+
