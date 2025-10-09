@@ -5,7 +5,7 @@ of modular robots with twisted orientations (45°, 135°, 225°, 315° rotations
 against standard orthogonal orientations in locomotion tasks.
 
 Author:     Noah, Kacper, Kayra
-Date:       2025-01-10
+Date:       2025-09-10
 Py Ver:     3.12
 OS:         macOS  Sequoia 15.6.1
 Hardware:   M4 Pro
@@ -60,7 +60,7 @@ from ariel.simulation.controllers.cpg_with_sensory_feedback import (
 from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
 # from ariel.simulation.environments import OlympicArena
 # from ariel.simulation.environments import OlympicArena
-from ariel.utils.renderers import video_renderer
+# from ariel.utils.renderers import video_renderer
 from ariel.utils.video_recorder import VideoRecorder
 from ariel.ec.a001 import Individual
 from ariel.simulation.controllers.controller import Controller
@@ -89,9 +89,7 @@ DATA.mkdir(exist_ok=True)
 SEED = 40
 
 # twisty indexes (rotations of 45, 135, 225, 315 degrees) 
-
-# twisty indexes (rotations of 45, 135, 225, 315 degrees) 
-TWIST_I = [1, 3, 5, 7]
+TWIST_I = [1, 3, 5, 7] # We want to experiment with this eventually
 
 
 # Global functions
@@ -99,9 +97,16 @@ console = Console()
 RNG = np.random.default_rng(SEED)
 
 # Global variables
+EVOLUTION_CONFIG = {
+    "generations": 100,
+    "population_size": 3,
+    "save_evolution_graphs": True,
+    "sample_diversity_every": 10,
+}
 SPAWN_POS = [0, 0, 0.1]
 NUM_OF_MODULES = 30
-# TARGET_POSITION = [5, 0, 0.5]
+# TARGET_POSITION = [5, 0, 0.5] 
+
 
 # def fitness_function_olympics(history: list[tuple[float, float, float]]) -> float:
 #     """Calculate fitness based on robot's trajectory history.
@@ -141,16 +146,6 @@ NUM_OF_MODULES = 30
 #         (xt - xc) ** 2 + (yt - yc) ** 2 + (zt - zc) ** 2,
 #     )
 #     return -cartesian_distance
-
-def fitness_function_basic(history: list[float]) -> float:
-    xs, ys, _ = SPAWN_POS
-    xe, ye, _ = history[-1]
-
-    # maximize the distance
-    cartesian_distance = np.sqrt(
-        (xs - xe) ** 2 + (ys - ye) ** 2,
-    )
-    return cartesian_distance
 
 def create_individual(con_twisty: bool) -> Individual:
     ind = Individual()
@@ -185,12 +180,11 @@ def create_individual(con_twisty: bool) -> Individual:
             dtype=np.float32,
         )
     else:
-        # if twisty not true, the twisted angles are given the value zero, so they can't be selected.
+        # If twisty not true, the twisted angles are given the value zero, so they can't be selected.
         rotation_probability_space = RNG.random(
             size=(num_modules, NUM_OF_ROTATIONS),
             dtype=np.float32,
         )
-        #Hmmm, this seems incorrect btw
         for i in rotation_probability_space:
             i[TWIST_I] = [0]*4 #This assigns a list, not individual values
 
@@ -538,10 +532,10 @@ def finalize_experiment_data(
 
 
 def run_evolution_experiment(
-    generations: int = 100,
-    population_size: int = 100,
-    save_evolution_graphs: bool = True,
-    sample_diversity_every: int = 10,
+    generations: int = EVOLUTION_CONFIG['generations'],
+    population_size: int = EVOLUTION_CONFIG['population_size'],
+    save_evolution_graphs: bool = EVOLUTION_CONFIG['save_evolution_graphs'],
+    sample_diversity_every: int = EVOLUTION_CONFIG['sample_diversity_every'],
 ) -> tuple[Individual, dict]:
     """Run evolutionary experiment comparing twisty vs non-twisty robots.
     
@@ -717,10 +711,7 @@ def run_evolution_experiment(
 
 def main() -> None:
     """Entry point for evolutionary experiment."""
-    champion, _ = run_evolution_experiment(
-        generations=5,
-        population_size=3,
-    )
+    champion, _ = run_evolution_experiment() #You can set some experimental variables here or all the way above in EVOLUTION_CONFIG
     
     # Render a video of the champion robot
     console.log("\n🎬 Creating champion robot video...")
@@ -728,7 +719,7 @@ def main() -> None:
     run(champion_robot, champion)
 
 
-def run(robot: CoreModule, individual: Individual, mode: str = "video", mode: str = "video") -> None:
+def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None:
     """Entry point."""
     # BugFix -> "Python exception raised"
     mujoco.set_mjcb_control(None)
@@ -741,7 +732,7 @@ def run(robot: CoreModule, individual: Individual, mode: str = "video", mode: st
         robot.spec.geoms[i].rgba[-1] = 0.5
 
     # Spawn the robot at the world
-    world.spawn(robot.spec, spawn_position=SPAWN_POS, spawn_position=SPAWN_POS)
+    world.spawn(robot.spec, spawn_position=SPAWN_POS)
 
     # Compile the model
     model = world.spec.compile()
@@ -837,9 +828,6 @@ def run(robot: CoreModule, individual: Individual, mode: str = "video", mode: st
                 duration=30,
                 video_recorder=video_recorder,
             )
-        
-        case _:
-            console.log(f"Mode '{mode}' not recognized. No simulation run.")
 
     # return fitness_function(tracker.history["xpos"])
             # Render with video recorder
