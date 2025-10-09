@@ -92,15 +92,15 @@ class Individual(SQLModel, table=True):
 
     # ------------------------ GENOTYPE ------------------------
     requires_init: bool = Field(default=True, index=True)
-    genotype_: JSONIterable | None = Field(default=None, sa_column=Column(JSON))
+    graph_: JSONIterable | None = Field(default=None, sa_column=Column(JSON))
     brain_genotype_: JSONIterable | None = Field(default=None, sa_column=Column(JSON))
 
     @property
-    def genotype(self) -> JSONIterable:
-        if self.genotype_ is None:
-            msg = "Trying to fetch uninitialized data in genotype!"
+    def graph(self) -> JSONIterable:
+        if self.graph_ is None:
+            msg = "Trying to fetch uninitialized data in graph!"
             raise ValueError(msg)
-        return self.genotype_
+        return self.graph_
     @property
     def brain_genotype(self) -> JSONIterable:
         if self.brain_genotype_ is None:
@@ -108,10 +108,10 @@ class Individual(SQLModel, table=True):
             raise ValueError(msg)
         return self.brain_genotype_
     
-    @genotype.setter
-    def genotype(self, individual_genotype: JSONIterable) -> None:
-        self.requires_init = not bool(individual_genotype)
-        self.genotype_ = individual_genotype
+    @graph.setter
+    def graph(self, individual_graph: JSONIterable) -> None:
+        self.requires_init = not bool(individual_graph)
+        self.graph_ = individual_graph
 
     @brain_genotype.setter
     def brain_genotype(self, individual_brain_genotype: JSONIterable) -> None:
@@ -142,7 +142,7 @@ def main() -> None:
         ind = Individual()
 
         # Generators
-        ind.genotype = IntegersGenerator.integers(low=0, high=10, size=5)
+        ind.graph = IntegersGenerator.integers(low=0, high=10, size=5)
 
         # Tags
         ind.tags = {"a": ["1", 2, 3]}

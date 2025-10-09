@@ -204,7 +204,7 @@ def create_individual(con_twisty: bool) -> Individual:
         conn_probability_space,
         rotation_probability_space,
     )
-    ind.genotype = graph
+    ind.graph = graph
     ind.twisty = con_twisty
     return ind
 
@@ -228,7 +228,7 @@ def create_individual_from_matrices(
     # Decode to graph
     hpd = HighProbabilityDecoder(len(type_probs))
     graph = hpd.probability_matrices_to_graph(type_probs, conn_probs, rotation_probs)
-    ind.genotype = graph
+    ind.graph = graph
     ind.twisty = twisty
     
     return ind
@@ -407,7 +407,7 @@ def evaluate_population(population: list[Individual]) -> None:
     """Evaluate fitness for all individuals in population."""
     for individual in population:
         try:
-            robot = construct_mjspec_from_graph(individual.genotype)
+            robot = construct_mjspec_from_graph(individual.graph)
             fitness = run_for_fitness(robot, individual)
             individual.fitness = fitness
             console.log(f"Individual (twisty={individual.twisty}) fitness: {fitness:.3f}")
@@ -734,7 +734,7 @@ def run_evolution_experiment(
                 champion_dir.mkdir(parents=True, exist_ok=True)
                 filename = f"gen_{generation + 1}_fitness_{best_twisty_fitness:.3f}.json"
                 save_graph_as_json(
-                    current_best_twisty.genotype,
+                    current_best_twisty.graph,
                     champion_dir / filename,
                 )
             
@@ -749,7 +749,7 @@ def run_evolution_experiment(
                 champion_dir.mkdir(parents=True, exist_ok=True)
                 filename = f"gen_{generation + 1}_fitness_{best_non_twisty_fitness:.3f}.json"
                 save_graph_as_json(
-                    current_best_non_twisty.genotype,
+                    current_best_non_twisty.graph,
                     champion_dir / filename,
                 )
         
@@ -777,11 +777,11 @@ def run_evolution_experiment(
             
             for i, ind in enumerate(top_twisty):
                 filename = f"twisty_top_{i+1}_fitness_{ind.fitness:.3f}.json"
-                save_graph_as_json(ind.genotype, diversity_dir / filename)
+                save_graph_as_json(ind.graph, diversity_dir / filename)
                 
             for i, ind in enumerate(top_non_twisty):
                 filename = f"non_twisty_top_{i+1}_fitness_{ind.fitness:.3f}.json"
-                save_graph_as_json(ind.genotype, diversity_dir / filename)
+                save_graph_as_json(ind.graph, diversity_dir / filename)
 
         # Report generation statistics
         console.log(f"Generation {generation + 1} Detailed Statistics:")
@@ -840,7 +840,7 @@ def run_evolution_experiment(
 
     # Save champion graph to file
     champion_filename = f"champion_{champion_type.lower()}_robot.json"
-    save_graph_as_json(champion.genotype, DATA / champion_filename)
+    save_graph_as_json(champion.graph, DATA / champion_filename)
     console.log(f"📋 Champion robot saved to: {DATA / champion_filename}")
     
     return champion, experiment_data
@@ -852,7 +852,7 @@ def main() -> None:
     
     # Visualize the champion robot - change mode here!
     console.log("\n🏆 Visualizing champion robot...")
-    champion_robot = construct_mjspec_from_graph(champion.genotype)
+    champion_robot = construct_mjspec_from_graph(champion.graph)
     
     # Change mode to "launcher" to see robot in interactive viewer
     # Change mode to "video" to record a video
