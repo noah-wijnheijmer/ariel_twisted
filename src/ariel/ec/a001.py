@@ -65,7 +65,7 @@ class Individual(SQLModel, table=True):
 
     time_of_birth: int = Field(default=-1, index=True)
     time_of_death: int = Field(default=-1, index=True)
-
+    time_alive: int = Field(default=-1, index=True)
     # parents_id removed for now; reintroduce later if needed.
 
     # ------------------------ FITNESS ------------------------
