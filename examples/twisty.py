@@ -60,7 +60,7 @@ from ariel.simulation.controllers.cpg_with_sensory_feedback import (
 from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
 # from ariel.simulation.environments import OlympicArena
 # from ariel.simulation.environments import OlympicArena
-# from ariel.utils.renderers import video_renderer
+from ariel.utils.renderers import video_renderer
 from ariel.utils.video_recorder import VideoRecorder
 from ariel.ec.a001 import Individual
 from ariel.simulation.controllers.controller import Controller
@@ -98,10 +98,12 @@ RNG = np.random.default_rng(SEED)
 
 # Global variables
 EVOLUTION_CONFIG = {
-    "generations": 100,
-    "population_size": 3,
+    "generations": 2,
+    "population_size": 10,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
+    "checkpoint_every": 5,  # Save checkpoint every N generations
+    "auto_resume": True,    # Automatically resume from checkpoint if found
 }
 SPAWN_POS = [0, 0, 0.1]
 NUM_OF_MODULES = 30
@@ -163,8 +165,8 @@ def create_individual(con_twisty: bool) -> Individual:
         if i == 0:  # Keep core module as is (will be set correctly by decoder)
             continue
         # Boost HINGE probability and reduce NONE probability
-        type_probability_space[i, 2] *= 3.0  # HINGE gets 3x weight
-        type_probability_space[i, 1] *= 2.0  # BRICK gets 2x weight  
+        type_probability_space[i, 2] *= 1.0  # HINGE gets 3x weight
+        type_probability_space[i, 1] *= 1.0  # BRICK gets 2x weight  
         type_probability_space[i, 3] *= 0.1  # NONE gets very low weight
 
     # "Connection" probability space
@@ -368,7 +370,7 @@ def run_for_fitness(robot: CoreModule, individual: Individual) -> float:
     for i in range(len(robot.spec.geoms)):
         robot.spec.geoms[i].rgba[-1] = 0.5
     
-    world.spawn(robot.spec)
+    world.spawn(robot.spec, spawn_position=SPAWN_POS)
     model = world.spec.compile()
     data = mujoco.MjData(model)
     mujoco.mj_resetData(model, data)
@@ -529,6 +531,141 @@ def finalize_experiment_data(
     with open(DATA / experiment_filename, "w", encoding="utf-8") as f:
         json.dump(experiment_data, f, indent=2)
     console.log(f"📈 Complete experiment data saved to: {DATA / experiment_filename}")
+
+
+def save_checkpoint(
+    generation: int,
+    twisty_population: list[Individual],
+    non_twisty_population: list[Individual],
+    experiment_data: dict,
+    best_twisty_ever: Individual,
+    best_non_twisty_ever: Individual,
+    best_twisty_fitness: float,
+    best_non_twisty_fitness: float,
+) -> None:
+    """Save complete experiment state to checkpoint file."""
+    checkpoint_data = {
+        "generation": generation,
+        "experiment_data": experiment_data,
+        "best_twisty_fitness": best_twisty_fitness,
+        "best_non_twisty_fitness": best_non_twisty_fitness,
+        "populations": {
+            "twisty": [
+                {
+                    "tags": ind.tags,
+                    "fitness": ind.fitness,
+                    "twisty": ind.twisty,
+                } for ind in twisty_population
+            ],
+            "non_twisty": [
+                {
+                    "tags": ind.tags,
+                    "fitness": ind.fitness,
+                    "twisty": ind.twisty,
+                } for ind in non_twisty_population
+            ],
+        },
+        "champions": {
+            "twisty": {
+                "tags": best_twisty_ever.tags if best_twisty_ever else None,
+                "fitness": best_twisty_fitness,
+                "twisty": True,
+            } if best_twisty_ever else None,
+            "non_twisty": {
+                "tags": best_non_twisty_ever.tags if best_non_twisty_ever else None,
+                "fitness": best_non_twisty_fitness,
+                "twisty": False,
+            } if best_non_twisty_ever else None,
+        },
+        "timestamp": str(np.datetime64('now')),
+        "seed": SEED,
+    }
+    
+    checkpoint_file = DATA / f"checkpoint_gen_{generation}.json"
+    with open(checkpoint_file, 'w', encoding='utf-8') as f:
+        json.dump(checkpoint_data, f, indent=2)
+    
+    console.log(f"💾 Checkpoint saved: {checkpoint_file}")
+
+
+def load_checkpoint(
+    checkpoint_file: Path,
+) -> tuple[int, list[Individual], list[Individual], dict, Individual, Individual, float, float]:
+    """Load experiment state from checkpoint file."""
+    with open(checkpoint_file, 'r', encoding='utf-8') as f:
+        checkpoint_data = json.load(f)
+    
+    generation = checkpoint_data["generation"]
+    experiment_data = checkpoint_data["experiment_data"]
+    best_twisty_fitness = checkpoint_data["best_twisty_fitness"]
+    best_non_twisty_fitness = checkpoint_data["best_non_twisty_fitness"]
+    
+    # Reconstruct populations
+    twisty_population = []
+    for ind_data in checkpoint_data["populations"]["twisty"]:
+        individual = create_individual_from_matrices(
+            np.array(ind_data["tags"]["type_probs"]),
+            np.array(ind_data["tags"]["conn_probs"]),
+            np.array(ind_data["tags"]["rotation_probs"]),
+            ind_data["twisty"]
+        )
+        individual.fitness = ind_data["fitness"]
+        twisty_population.append(individual)
+    
+    non_twisty_population = []
+    for ind_data in checkpoint_data["populations"]["non_twisty"]:
+        individual = create_individual_from_matrices(
+            np.array(ind_data["tags"]["type_probs"]),
+            np.array(ind_data["tags"]["conn_probs"]),
+            np.array(ind_data["tags"]["rotation_probs"]),
+            ind_data["twisty"]
+        )
+        individual.fitness = ind_data["fitness"]
+        non_twisty_population.append(individual)
+    
+    # Reconstruct champions
+    best_twisty_ever = None
+    if checkpoint_data["champions"]["twisty"]:
+        champ_data = checkpoint_data["champions"]["twisty"]
+        best_twisty_ever = create_individual_from_matrices(
+            np.array(champ_data["tags"]["type_probs"]),
+            np.array(champ_data["tags"]["conn_probs"]),
+            np.array(champ_data["tags"]["rotation_probs"]),
+            champ_data["twisty"]
+        )
+        best_twisty_ever.fitness = champ_data["fitness"]
+    
+    best_non_twisty_ever = None
+    if checkpoint_data["champions"]["non_twisty"]:
+        champ_data = checkpoint_data["champions"]["non_twisty"]
+        best_non_twisty_ever = create_individual_from_matrices(
+            np.array(champ_data["tags"]["type_probs"]),
+            np.array(champ_data["tags"]["conn_probs"]),
+            np.array(champ_data["tags"]["rotation_probs"]),
+            champ_data["twisty"]
+        )
+        best_non_twisty_ever.fitness = champ_data["fitness"]
+    
+    console.log(f"📂 Checkpoint loaded: generation {generation}")
+    return (generation, twisty_population, non_twisty_population, experiment_data, 
+            best_twisty_ever, best_non_twisty_ever, best_twisty_fitness, best_non_twisty_fitness)
+
+
+def find_latest_checkpoint() -> Path | None:
+    """Find the most recent checkpoint file."""
+    checkpoint_pattern = "checkpoint_gen_*.json"
+    checkpoints = list(DATA.glob(checkpoint_pattern))
+    
+    if not checkpoints:
+        return None
+    
+    # Sort by generation number
+    def get_gen_num(path: Path) -> int:
+        return int(path.stem.split('_')[-1])
+    
+    latest = max(checkpoints, key=get_gen_num)
+    console.log(f"🔍 Found latest checkpoint: {latest}")
+    return latest
 
 
 def run_evolution_experiment(
@@ -713,13 +850,16 @@ def main() -> None:
     """Entry point for evolutionary experiment."""
     champion, _ = run_evolution_experiment() #You can set some experimental variables here or all the way above in EVOLUTION_CONFIG
     
-    # Render a video of the champion robot
-    console.log("\n🎬 Creating champion robot video...")
+    # Visualize the champion robot - change mode here!
+    console.log("\n🏆 Visualizing champion robot...")
     champion_robot = construct_mjspec_from_graph(champion.genotype)
-    run(champion_robot, champion)
+    
+    # Change mode to "launcher" to see robot in interactive viewer
+    # Change mode to "video" to record a video
+    run(champion_robot, champion, mode="launcher")
 
 
-def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None:
+def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None: #Visualizes the champion robot after evolution
     """Entry point."""
     # BugFix -> "Python exception raised"
     mujoco.set_mjcb_control(None)
@@ -732,7 +872,7 @@ def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None:
         robot.spec.geoms[i].rgba[-1] = 0.5
 
     # Spawn the robot at the world
-    world.spawn(robot.spec, spawn_position=SPAWN_POS)
+    world.spawn(robot.spec, spawn_position=SPAWN_POS) #read as champion_robot.spec. it's just being accessed through the parameter name robot.
 
     # Compile the model
     model = world.spec.compile()
@@ -803,10 +943,9 @@ def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None:
     match mode:
         # Launches interactive viewer
         case "launcher":
-            viewer.launch(
-                model=model,
-                data=data,
-            )
+            # Launch viewer with proper camera settings for small robots
+            viewer.launch(model, data)
+            # console.log("🎥 Viewer launched!")
 
         # This disables visualisation (fastest option)
         case "simple_runner":
