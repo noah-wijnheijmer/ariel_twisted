@@ -99,10 +99,10 @@ RNG = np.random.default_rng(SEED)
 # Global variables
 EVOLUTION_CONFIG = {
     "generations": 2,
-    "population_size": 10,
+    "population_size": 5,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
-    "checkpoint_every": 5,  # Save checkpoint every N generations
+    "checkpoint_every": 1,  # Save checkpoint every N generations
     "auto_resume": True,    # Automatically resume from checkpoint if found
 }
 SPAWN_POS = [0, 0, 0.1]
@@ -188,14 +188,7 @@ def create_individual(con_twisty: bool) -> Individual:
             dtype=np.float32,
         )
         for i in rotation_probability_space:
-            i[TWIST_I] = [0]*4 #This assigns a list, not individual values
-
-    # Store probability matrices in tags for evolution
-    ind.tags = {
-        "type_probs": type_probability_space.tolist(),
-        "conn_probs": conn_probability_space.tolist(),
-        "rotation_probs": rotation_probability_space.tolist()
-    }
+            i[TWIST_I] = [0]*4
 
     # Decode the high-probability graph
     hpd = HighProbabilityDecoder(num_modules)
@@ -204,6 +197,7 @@ def create_individual(con_twisty: bool) -> Individual:
         conn_probability_space,
         rotation_probability_space,
     )
+    ind.genotype = [type_probability_space.tolist(), conn_probability_space.tolist(), rotation_probability_space.tolist()]
     ind.graph = graph
     ind.twisty = con_twisty
     return ind
@@ -218,16 +212,11 @@ def create_individual_from_matrices(
     """Create individual from probability matrices."""
     ind = Individual()
     
-    # Store in tags
-    ind.tags = {
-        "type_probs": type_probs.tolist(),
-        "conn_probs": conn_probs.tolist(),
-        "rotation_probs": rotation_probs.tolist()
-    }
-    
     # Decode to graph
     hpd = HighProbabilityDecoder(len(type_probs))
     graph = hpd.probability_matrices_to_graph(type_probs, conn_probs, rotation_probs)
+    
+    ind.genotype = [type_probs.tolist(), conn_probs.tolist(), rotation_probs.tolist()]
     ind.graph = graph
     ind.twisty = twisty
     
@@ -286,9 +275,9 @@ def mutate_individual(
 
     
     # Extract probability matrices from tags
-    type_probs = individual.tags["type_probs"]
-    conn_probs = individual.tags["conn_probs"]
-    rotation_probs = individual.tags["rotation_probs"]
+    type_probs = individual.genotype[0]
+    conn_probs = individual.genotype[1]
+    rotation_probs = individual.genotype[2]
     
     # Apply ARIEL's float_creep mutations
     if RNG.random() < mutation_rate:
@@ -552,14 +541,14 @@ def save_checkpoint(
         "populations": {
             "twisty": [
                 {
-                    "tags": ind.tags,
+                    "genotype": ind.genotype,
                     "fitness": ind.fitness,
                     "twisty": ind.twisty,
                 } for ind in twisty_population
             ],
             "non_twisty": [
                 {
-                    "tags": ind.tags,
+                    "genotype": ind.genotype,
                     "fitness": ind.fitness,
                     "twisty": ind.twisty,
                 } for ind in non_twisty_population
@@ -567,12 +556,12 @@ def save_checkpoint(
         },
         "champions": {
             "twisty": {
-                "tags": best_twisty_ever.tags if best_twisty_ever else None,
+                "genotype": best_twisty_ever.genotype if best_twisty_ever else None,
                 "fitness": best_twisty_fitness,
                 "twisty": True,
             } if best_twisty_ever else None,
             "non_twisty": {
-                "tags": best_non_twisty_ever.tags if best_non_twisty_ever else None,
+                "genotype": best_non_twisty_ever.genotype if best_non_twisty_ever else None,
                 "fitness": best_non_twisty_fitness,
                 "twisty": False,
             } if best_non_twisty_ever else None,
@@ -604,9 +593,9 @@ def load_checkpoint(
     twisty_population = []
     for ind_data in checkpoint_data["populations"]["twisty"]:
         individual = create_individual_from_matrices(
-            np.array(ind_data["tags"]["type_probs"]),
-            np.array(ind_data["tags"]["conn_probs"]),
-            np.array(ind_data["tags"]["rotation_probs"]),
+            np.array(ind_data["genotype"][0]),
+            np.array(ind_data["genotype"][1]),
+            np.array(ind_data["genotype"][2]),
             ind_data["twisty"]
         )
         individual.fitness = ind_data["fitness"]
@@ -615,9 +604,9 @@ def load_checkpoint(
     non_twisty_population = []
     for ind_data in checkpoint_data["populations"]["non_twisty"]:
         individual = create_individual_from_matrices(
-            np.array(ind_data["tags"]["type_probs"]),
-            np.array(ind_data["tags"]["conn_probs"]),
-            np.array(ind_data["tags"]["rotation_probs"]),
+            np.array(ind_data["genotype"][0]),
+            np.array(ind_data["genotype"][1]),
+            np.array(ind_data["genotype"][2]),
             ind_data["twisty"]
         )
         individual.fitness = ind_data["fitness"]
@@ -628,9 +617,9 @@ def load_checkpoint(
     if checkpoint_data["champions"]["twisty"]:
         champ_data = checkpoint_data["champions"]["twisty"]
         best_twisty_ever = create_individual_from_matrices(
-            np.array(champ_data["tags"]["type_probs"]),
-            np.array(champ_data["tags"]["conn_probs"]),
-            np.array(champ_data["tags"]["rotation_probs"]),
+            np.array(champ_data["genotype"][0]),
+            np.array(champ_data["genotype"][1]),
+            np.array(champ_data["genotype"][2]),
             champ_data["twisty"]
         )
         best_twisty_ever.fitness = champ_data["fitness"]
@@ -639,9 +628,9 @@ def load_checkpoint(
     if checkpoint_data["champions"]["non_twisty"]:
         champ_data = checkpoint_data["champions"]["non_twisty"]
         best_non_twisty_ever = create_individual_from_matrices(
-            np.array(champ_data["tags"]["type_probs"]),
-            np.array(champ_data["tags"]["conn_probs"]),
-            np.array(champ_data["tags"]["rotation_probs"]),
+            np.array(champ_data["genotype"][0]),
+            np.array(champ_data["genotype"][1]),
+            np.array(champ_data["genotype"][2]),
             champ_data["twisty"]
         )
         best_non_twisty_ever.fitness = champ_data["fitness"]

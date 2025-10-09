@@ -93,6 +93,7 @@ class Individual(SQLModel, table=True):
     # ------------------------ GENOTYPE ------------------------
     requires_init: bool = Field(default=True, index=True)
     graph_: JSONIterable | None = Field(default=None, sa_column=Column(JSON))
+    genotype_: JSONIterable | None = Field(default=None, sa_column=Column(JSON))
     brain_genotype_: JSONIterable | None = Field(default=None, sa_column=Column(JSON))
 
     @property
@@ -101,10 +102,18 @@ class Individual(SQLModel, table=True):
             msg = "Trying to fetch uninitialized data in graph!"
             raise ValueError(msg)
         return self.graph_
+    
+    @property
+    def genotype(self) -> JSONIterable:
+        if self.genotype_ is None:
+            msg = "Trying to fetch uninitialized data in body genotype!"
+            raise ValueError(msg)
+        return self.genotype_
+    
     @property
     def brain_genotype(self) -> JSONIterable:
         if self.brain_genotype_ is None:
-            msg = "Trying to fetch uninitialized data in genotype!"
+            msg = "Trying to fetch uninitialized data in brain genotype!"
             raise ValueError(msg)
         return self.brain_genotype_
     
@@ -112,6 +121,11 @@ class Individual(SQLModel, table=True):
     def graph(self, individual_graph: JSONIterable) -> None:
         self.requires_init = not bool(individual_graph)
         self.graph_ = individual_graph
+
+    @genotype.setter
+    def genotype(self, individual_genotype: JSONIterable) -> None:
+        self.requires_init = not bool(individual_genotype)
+        self.genotype_ = individual_genotype
 
     @brain_genotype.setter
     def brain_genotype(self, individual_brain_genotype: JSONIterable) -> None:
