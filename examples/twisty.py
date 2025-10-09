@@ -95,7 +95,7 @@ class EASettings(BaseSettings):
     # world: SimpleFlatWorld = SimpleFlatWorld()
     starting_pos: list[float] = [0, 0, 0.1]
 
-    population_size: int = 1
+    population_size: int = 3
     num_of_generations: int = 1
     
     nn_hidden_layers: list[int] = [64, 32]
@@ -116,7 +116,7 @@ def fitness_function_basic(history: list[float]) -> float:
 
 def create_individual(con_twisty: bool) -> Individual:
     ind = Individual()
-    num_modules = 3
+    num_modules = 20
 
     # "Type" probability space
     type_probability_space = RNG.random(
@@ -166,7 +166,7 @@ def main() -> None:
     console.log("[bold cyan]Starting Neuroevolution Experiment")
     
     # Configuration
-    population_size = 5
+    population_size = config.population_size
     
     # Initialize population of robot morphologies
     console.log(f"[yellow]Creating population of {population_size} robot morphologies...")
@@ -184,8 +184,8 @@ def main() -> None:
         )
     for ind in initial_population:
         # core = construct_mjspec_from_graph(ind.genotype)
-        brains = NE.evolve(ind)
-        print(brains)
+        brain = NE.evolve(ind)
+        ind.brain_genotype = brain
         # Simulate the robot
         # run(core, ind)
 

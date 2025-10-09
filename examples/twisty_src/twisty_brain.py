@@ -67,8 +67,9 @@ class RobotBrain(nn.Module):
                 nn.init.zeros_(layer.bias)
     
     def forward_control(self,
+                        model: mujoco.MjModel,
                         data: mujoco.MjData,
-                        model: mujoco.MjModel) -> np.ndarray:
+    ) -> np.ndarray:
         """Forward pass for control inputs."""
         state_tensor = torch.tensor(data.qpos, dtype=torch.float32).unsqueeze(0)
 

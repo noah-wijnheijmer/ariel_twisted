@@ -59,14 +59,17 @@ class NeuroEvolution:
 
     def __init__(
             self,
-            fitness_function: Callable,
+            fitness_function: Callable[[list[float]], float],
             config, # EASettings
             ):
         self.config = config
         self.fitness_function = fitness_function
         self.rng = np.random.default_rng(SEED)
 
-    def create_individual(self, input_size, output_size, hidden_layers) -> Individual:
+    def create_individual(self,
+                          input_size: int,
+                          output_size: int,
+                          hidden_layers: list[int]) -> Individual:
         new_brain = RobotBrain(
             input_size=input_size,
             output_size=output_size,
@@ -133,22 +136,28 @@ class NeuroEvolution:
         # return population
         pass
 
-    def evaluate(self, population: Population, nn_input_size: int, nn_output_size: int) -> Population:
-        for ind in population:
-            history = self.run(ind, nn_input_size, nn_output_size)
-            ind.fitness = self.fitness_function(history)
+    def evaluate(self, original_ind: Individual,
+                 brain_pop: Population,
+                 nn_input_size: int,
+                 nn_output_size: int
+    ) -> Population:
+        
+        for ind in brain_pop:
+            if ind.requires_eval:
+                history = self.run(original_ind, ind, nn_input_size, nn_output_size)
+                ind.fitness = self.fitness_function(history)
 
-        return population
+        return brain_pop
 
     def run(
         self,
-        ind: Individual,
+        original_ind: Individual,
+        brain_ind: Individual,
         nn_input_size: int,
         nn_output_size: int,
-        mode: str = "simple",
-    ) -> None:
-        """Entry point."""
-
+        mode: str = "simple_runner",
+    ) -> Population:
+        
         # THIS IS CRAZY INEFFICIENT CHANGE IT LATER
         # ------------------------------------------------------------------ #
         brain = RobotBrain(
@@ -156,8 +165,9 @@ class NeuroEvolution:
             output_size=nn_output_size,
             hidden_layers=self.config.nn_hidden_layers,
         )
-        brain.set_weights_from_vector(ind.genotype)    
+        brain.set_weights_from_vector(brain_ind.genotype)
         # ------------------------------------------------------------------ #
+        robot = construct_mjspec_from_graph(original_ind.genotype)
 
         mujoco.set_mjcb_control(None)
 
@@ -165,11 +175,11 @@ class NeuroEvolution:
         world = SimpleFlatWorld()
 
         # Set random colors for geoms
-        for i in range(len(self.robot.spec.geoms)):
-            self.robot.spec.geoms[i].rgba[-1] = 0.5
+        for i in range(len(robot.spec.geoms)):
+            robot.spec.geoms[i].rgba[-1] = 0.5
 
         # Spawn the robot at the world
-        world.spawn(self.robot.spec, spawn_position=self.config.starting_pos)
+        world.spawn(robot.spec, spawn_position=self.config.starting_pos)
 
         # Compile the model
         model = world.spec.compile()
@@ -242,7 +252,10 @@ class NeuroEvolution:
             case _:
                 console.log(f"Mode '{mode}' not recognized. No simulation run.")
 
-        return self.fitness_function(tracker.history["xpos"])
+        # print(20 * "-")
+        # print(tracker.history["xpos"][0][-1])
+        # print(20 * "-")
+        return tracker.history["xpos"][0]
 
     def survivor_selection(self, population: Population) -> Population:
         # random.shuffle(population)
@@ -264,7 +277,7 @@ class NeuroEvolution:
         # return population
         pass
 
-    def evolve(self, original_ind: Individual) -> list[JSONIterable]:
+    def evolve(self, original_ind: Individual) -> JSONIterable:
         
         """
 
@@ -275,11 +288,11 @@ class NeuroEvolution:
 
         # Generate the model and data to determine input + output sizes of NN
 
-        mujoco.set_mjcb_control(None) # IDK WHY THIS NEEDS TO BE HERE BUT IT WORKS SO I'M NOT COMPLAINING
-        self.robot = construct_mjspec_from_graph(original_ind.genotype)
+        mujoco.set_mjcb_control(None) # NOTE: IDK WHY THIS NEEDS TO BE HERE BUT IT WORKS SO I'M NOT COMPLAINING
+        robot = construct_mjspec_from_graph(original_ind.genotype)
 
         world = SimpleFlatWorld()
-        world.spawn(self.robot.spec, spawn_position=self.config.starting_pos)
+        world.spawn(robot.spec, spawn_position=self.config.starting_pos)
 
         model = world.spec.compile()
         data = mujoco.MjData(model)
@@ -289,13 +302,13 @@ class NeuroEvolution:
         mujoco.mj_resetData(model, data)
 
         # Create initial population
-        population = [self.create_individual(nn_input_size, nn_output_size, self.config.nn_hidden_layers) for _ in range(self.config.population_size)]
+        brain_population = [self.create_individual(nn_input_size, nn_output_size, self.config.nn_hidden_layers) for _ in range(self.config.population_size)]
         
         for _ in range(self.config.num_of_generations):
-            population = self.evaluate(population, nn_input_size, nn_output_size)
-            print([ind.fitness for ind in population])
+            brain_population = self.evaluate(original_ind, brain_population, nn_input_size, nn_output_size)
+            print([ind.fitness for ind in brain_population])
 
-        return [ind.genotype for ind in population]
+        return sorted(brain_population, key=lambda ind: ind.fitness, reverse=self.config.is_maximisation)[0].genotype
         # # Create initial population
         # population_list = [self.create_individual() for _ in range(10)]
         # population_list = self.evaluate(population_list)
