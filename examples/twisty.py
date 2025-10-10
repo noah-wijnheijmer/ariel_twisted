@@ -95,8 +95,17 @@ class EASettings(BaseSettings):
     # world: SimpleFlatWorld = SimpleFlatWorld()
     starting_pos: list[float] = [0, 0, 0.1]
 
-    population_size: int = 3
+    # Robot evolution parameters
+    population_size: int = 1
     num_of_generations: int = 1
+
+    # Neuroevolution parameters
+    population_size_brains: int = 4
+    num_of_generations_brains: int = 10
+    mutation_rate_brains: float = 1
+    mutation_magnitude_brains: float = 0.5
+    mutation_scale_brains: float = 5.0
+    
     
     nn_hidden_layers: list[int] = [64, 32]
     

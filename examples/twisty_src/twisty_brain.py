@@ -73,7 +73,7 @@ class RobotBrain(nn.Module):
         """Forward pass for control inputs."""
         state_tensor = torch.tensor(data.qpos, dtype=torch.float32).unsqueeze(0)
 
-        return self.network(state_tensor).detach().numpy()
+        return self.network(state_tensor).detach().numpy() * np.pi / 2
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the network."""
