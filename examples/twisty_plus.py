@@ -99,7 +99,7 @@ RNG = np.random.default_rng(SEED)
 # Global variables
 EVOLUTION_CONFIG = {
     "generations": 5,
-    "population_size": 10,
+    "population_size": 20,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
     "checkpoint_every": 1,  # Save checkpoint every N generations
@@ -423,98 +423,55 @@ def initialize_experiment_data(generations: int, population_size: int) -> dict:
     }
 
 
-def calculate_generation_statistics(
-    twisty_population: list[Individual], 
-    non_twisty_population: list[Individual], 
+def calculate_generation_statistics( 
+    mixed_twisty_population: list[Individual], 
     generation: int
 ) -> dict:
     """Calculate comprehensive statistics for a generation."""
-    twisty_fitnesses = [ind.fitness for ind in twisty_population]
-    non_twisty_fitnesses = [ind.fitness for ind in non_twisty_population]
+    mixed_twisty_fitnesses = [ind.fitness for ind in mixed_twisty_population]
     
-    return {
-        "generation": generation + 1,
-        "twisty": {
-            "mean": float(np.mean(twisty_fitnesses)),
-            "std": float(np.std(twisty_fitnesses)),
-            "min": float(min(twisty_fitnesses)),
-            "max": float(max(twisty_fitnesses)),
-            "median": float(np.median(twisty_fitnesses)),
-            "q25": float(np.percentile(twisty_fitnesses, 25)),
-            "q75": float(np.percentile(twisty_fitnesses, 75)),
-            "all_fitnesses": [float(f) for f in twisty_fitnesses],
-        },
-        "non_twisty": {
-            "mean": float(np.mean(non_twisty_fitnesses)),
-            "std": float(np.std(non_twisty_fitnesses)),
-            "min": float(min(non_twisty_fitnesses)),
-            "max": float(max(non_twisty_fitnesses)),
-            "median": float(np.median(non_twisty_fitnesses)),
-            "q25": float(np.percentile(non_twisty_fitnesses, 25)),
-            "q75": float(np.percentile(non_twisty_fitnesses, 75)),
-            "all_fitnesses": [float(f) for f in non_twisty_fitnesses],
+    return {"generation": generation + 1,
+        "mixed_twisty": {
+            "mean": float(np.mean(mixed_twisty_fitnesses)),
+            "std": float(np.std(mixed_twisty_fitnesses)),
+            "min": float(min(mixed_twisty_fitnesses)),
+            "max": float(max(mixed_twisty_fitnesses)),
+            "median": float(np.median(mixed_twisty_fitnesses)),
+            "q25": float(np.percentile(mixed_twisty_fitnesses, 25)),
+            "q75": float(np.percentile(mixed_twisty_fitnesses, 75)),
+            "all_fitnesses": [float(f) for f in mixed_twisty_fitnesses],
         },
     }
 
 
 def finalize_experiment_data(
     experiment_data: dict,
-    best_twisty_fitness: float,
-    best_non_twisty_fitness: float,
+    best_mixed_twisty_fitness: float,
     champion_type: str,
     champion_fitness: float
 ) -> None:
     """Calculate final statistics and save experiment data."""
     # Calculate overall statistics
-    twisty_all_scores = [
+    mixed_twisty_all_scores = [
         score for gen in experiment_data["generations"] 
-        for score in gen["twisty"]["all_fitnesses"]
-    ]
-    non_twisty_all_scores = [
-        score for gen in experiment_data["generations"] 
-        for score in gen["non_twisty"]["all_fitnesses"]
+        for score in gen["mixed_twisty"]["all_fitnesses"]
     ]
     
     experiment_data["final_statistics"] = {
-        "twisty": {
-            "overall_mean": float(np.mean(twisty_all_scores)),
-            "overall_std": float(np.std(twisty_all_scores)),
-            "overall_min": float(min(twisty_all_scores)),
-            "overall_max": float(max(twisty_all_scores)),
-            "total_evaluations": len(twisty_all_scores),
-            "champion_fitness": float(best_twisty_fitness),
-        },
         "non_twisty": {
-            "overall_mean": float(np.mean(non_twisty_all_scores)),
-            "overall_std": float(np.std(non_twisty_all_scores)),
-            "overall_min": float(min(non_twisty_all_scores)),
-            "overall_max": float(max(non_twisty_all_scores)),
-            "total_evaluations": len(non_twisty_all_scores),
-            "champion_fitness": float(best_non_twisty_fitness),
+            "overall_mean": float(np.mean(mixed_twisty_all_scores)),
+            "overall_std": float(np.std(mixed_twisty_all_scores)),
+            "overall_min": float(min(mixed_twisty_all_scores)),
+            "overall_max": float(max(mixed_twisty_all_scores)),
+            "total_evaluations": len(mixed_twisty_all_scores),
+            "champion_fitness": float(best_mixed_twisty_fitness),
         },
     }
     
-    # Calculate performance advantage
-    if best_twisty_fitness >= best_non_twisty_fitness:
-        if best_non_twisty_fitness > 0:
-            performance_advantage = (
-                (best_twisty_fitness - best_non_twisty_fitness) 
-                / best_non_twisty_fitness
-            ) * 100
-        else:
-            performance_advantage = float("inf")
-    else:
-        performance_advantage = (
-            (best_non_twisty_fitness - best_twisty_fitness) 
-            / best_twisty_fitness
-        ) * 100
     
     experiment_data["champions"] = {
         "overall_champion": champion_type,
         "champion_fitness": float(champion_fitness),
-        "performance_advantage_percent": float(performance_advantage),
-        "twisty_champion_fitness": float(best_twisty_fitness),
-        "non_twisty_champion_fitness": float(best_non_twisty_fitness),
     }
     
     # Save experiment data
@@ -685,69 +642,52 @@ def run_evolution_experiment(
     experiment_data = initialize_experiment_data(generations, population_size)
     
     # Initialize separate populations
-    twisty_population = [
-        create_individual(con_twisty=True) for _ in range(population_size)
-    ]
-    non_twisty_population = [
+    mixed_twisty_population = [
         create_individual(con_twisty=False) for _ in range(population_size)
     ]
     
+    twisty_spawnrate = 0.5
+    twisty_maxspawn = int(population_size/5)
     # Track best individuals across all generations
-    best_twisty_ever = None
-    best_non_twisty_ever = None
-    best_twisty_fitness = -float('inf')
-    best_non_twisty_fitness = -float('inf')
-    
+    best_mixed_twisty_ever = None
+    best_mixed_twisty_fitness = -float('inf')
+    twisty_rate = twisty_spawnrate/generations
     # Evolution loop
     for generation in range(generations):
         console.log(f"\n--- Generation {generation + 1} ---")
         
         # Evaluate fitness for both populations
-        console.log("Evaluating twisty population...")
-        evaluate_population(twisty_population)
-        
-        console.log("Evaluating non-twisty population...")
-        evaluate_population(non_twisty_population)
+        # console.log("Evaluating twisty population...")
+        # evaluate_population(twisty_population)
+        twisty_p = twisty_rate*generation
+        for i in range(twisty_maxspawn):
+            chance = RNG.random()
+            if chance <= twisty_p:
+                mixed_twisty_population.append(create_individual(True))
+        console.log("Evaluating mixed-twisty population...")
+        evaluate_population(mixed_twisty_population)
         
         # Track best individuals this generation
-        current_best_twisty = max(twisty_population, key=lambda x: x.fitness)
-        current_best_non_twisty = max(non_twisty_population, key=lambda x: x.fitness)
-        
-        # Update all-time champions
-        if current_best_twisty.fitness > best_twisty_fitness:
-            best_twisty_ever = current_best_twisty
-            best_twisty_fitness = current_best_twisty.fitness
-            console.log(f"[bold blue]NEW TWISTY CHAMPION: {best_twisty_fitness:.3f}")
+        current_best_mixed_twisty = max(mixed_twisty_population, key=lambda x: x.fitness)
+            
+        if current_best_mixed_twisty.fitness > best_mixed_twisty_fitness:
+            best_mixed_twisty_ever = current_best_mixed_twisty
+            best_mixed_twisty_fitness = current_best_mixed_twisty.fitness
+            console.log(f"[bold red]NEW MIXED-TWISTY CHAMPION: {best_mixed_twisty_fitness:.3f}")
             
             # Save new champion graph for research analysis (if enabled)
             if save_evolution_graphs:
-                champion_dir = DATA / "evolution_champions" / "twisty"
+                champion_dir = DATA / "evolution_champions" / "Mixed_twisty"
                 champion_dir.mkdir(parents=True, exist_ok=True)
-                filename = f"gen_{generation + 1}_fitness_{best_twisty_fitness:.3f}.json"
+                filename = f"gen_{generation + 1}_fitness_{best_mixed_twisty_fitness:.3f}.json"
                 save_graph_as_json(
-                    current_best_twisty.graph,
-                    champion_dir / filename,
-                )
-            
-        if current_best_non_twisty.fitness > best_non_twisty_fitness:
-            best_non_twisty_ever = current_best_non_twisty
-            best_non_twisty_fitness = current_best_non_twisty.fitness
-            console.log(f"[bold red]NEW NON-TWISTY CHAMPION: {best_non_twisty_fitness:.3f}")
-            
-            # Save new champion graph for research analysis (if enabled)
-            if save_evolution_graphs:
-                champion_dir = DATA / "evolution_champions" / "non_twisty"
-                champion_dir.mkdir(parents=True, exist_ok=True)
-                filename = f"gen_{generation + 1}_fitness_{best_non_twisty_fitness:.3f}.json"
-                save_graph_as_json(
-                    current_best_non_twisty.graph,
+                    current_best_mixed_twisty.graph,
                     champion_dir / filename,
                 )
         
         # Calculate comprehensive statistics for scientific analysis
         gen_stats = calculate_generation_statistics(
-            twisty_population,
-            non_twisty_population,
+            mixed_twisty_population,
             generation,
         )
 
@@ -763,66 +703,43 @@ def run_evolution_experiment(
             diversity_dir.mkdir(parents=True, exist_ok=True)
             
             # Sample top 3 from each population for diversity analysis
-            top_twisty = sorted(twisty_population, key=lambda x: x.fitness, reverse=True)[:3]
-            top_non_twisty = sorted(non_twisty_population, key=lambda x: x.fitness, reverse=True)[:3]
-            
-            for i, ind in enumerate(top_twisty):
-                filename = f"twisty_top_{i+1}_fitness_{ind.fitness:.3f}.json"
-                save_graph_as_json(ind.graph, diversity_dir / filename)
+            top_mixed_twisty = sorted(mixed_twisty_population, key=lambda x: x.fitness, reverse=True)[:3]
                 
-            for i, ind in enumerate(top_non_twisty):
-                filename = f"non_twisty_top_{i+1}_fitness_{ind.fitness:.3f}.json"
+            for i, ind in enumerate(top_mixed_twisty):
+                filename = f"mixed_twisty_top_{i+1}_fitness_{ind.fitness:.3f}.json"
                 save_graph_as_json(ind.graph, diversity_dir / filename)
 
         # Report generation statistics
         console.log(f"Generation {generation + 1} Detailed Statistics:")
-        twisty_stats = gen_stats["twisty"]
-        non_twisty_stats = gen_stats["non_twisty"]
+        mixed_twisty_stats = gen_stats["mixed_twisty"]
         
         console.log(
-            f"  Twisty - Mean: {twisty_stats['mean']:.3f} ± "
-            f"{twisty_stats['std']:.3f}"
+            f"  mixed-twisty - Mean: {mixed_twisty_stats['mean']:.3f} ± "
+            f"{mixed_twisty_stats['std']:.3f}"
         )
         console.log(
-            f"           Range: [{twisty_stats['min']:.3f}, "
-            f"{twisty_stats['max']:.3f}]"
+            f"               Range: [{mixed_twisty_stats['min']:.3f}, "
+            f"{mixed_twisty_stats['max']:.3f}]"
         )
         console.log(
-            f"           Median: {twisty_stats['median']:.3f}, "
-            f"IQR: [{twisty_stats['q25']:.3f}, {twisty_stats['q75']:.3f}]"
-        )
-        console.log(
-            f"  Non-twisty - Mean: {non_twisty_stats['mean']:.3f} ± "
-            f"{non_twisty_stats['std']:.3f}"
-        )
-        console.log(
-            f"               Range: [{non_twisty_stats['min']:.3f}, "
-            f"{non_twisty_stats['max']:.3f}]"
-        )
-        console.log(
-            f"               Median: {non_twisty_stats['median']:.3f}, "
-            f"IQR: [{non_twisty_stats['q25']:.3f}, "
-            f"{non_twisty_stats['q75']:.3f}]"
+            f"               Median: {mixed_twisty_stats['median']:.3f}, "
+            f"IQR: [{mixed_twisty_stats['q25']:.3f}, "
+            f"{mixed_twisty_stats['q75']:.3f}]"
         )
         
         # Evolve populations (except for last generation)
         if generation < generations - 1:
-            twisty_population = evolve_generation(twisty_population)
-            non_twisty_population = evolve_generation(non_twisty_population)
+            mixed_twisty_population = evolve_generation(mixed_twisty_population)
 
-    # Determine overall champion
-    if best_twisty_fitness >= best_non_twisty_fitness:
-        champion = best_twisty_ever
+    champion = best_mixed_twisty_ever
+    if champion.twisty is True:
         champion_type = "TWISTY"
-        champion_fitness = best_twisty_fitness
     else:
-        champion = best_non_twisty_ever
         champion_type = "NON-TWISTY"
-        champion_fitness = best_non_twisty_fitness
-
+    champion_fitness = best_mixed_twisty_fitness
     # Calculate final experiment statistics and save data
     finalize_experiment_data(
-        experiment_data, best_twisty_fitness, best_non_twisty_fitness,
+        experiment_data, best_mixed_twisty_fitness,
         champion_type, champion_fitness
     )
 
