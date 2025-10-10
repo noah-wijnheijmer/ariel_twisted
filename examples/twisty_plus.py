@@ -98,56 +98,17 @@ RNG = np.random.default_rng(SEED)
 
 # Global variables
 EVOLUTION_CONFIG = {
-    "generations": 5,
+    "generations": 50,
     "population_size": 20,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
     "checkpoint_every": 1,  # Save checkpoint every N generations
     "auto_resume": True,    # Automatically resume from checkpoint if found
 }
-SPAWN_POS = [0, 0, 0.1]
-NUM_OF_MODULES = 30
-# TARGET_POSITION = [5, 0, 0.5] 
-
-
-# def fitness_function_olympics(history: list[tuple[float, float, float]]) -> float:
-#     """Calculate fitness based on robot's trajectory history.
-
-#     xt, yt, zt = TARGET_POSITION
-#     xc, yc, zc = history[-1]
-
-#     # Minimize the distance --> maximize the negative distance
-#     cartesian_distance = np.sqrt(
-#         (xt - xc) ** 2 + (yt - yc) ** 2 + (zt - zc) ** 2,
-#     )
-#     return -cartesian_distance
-
-def fitness_function_basic(history: list[float]) -> float:
-    xs, ys, _ = SPAWN_POS
-    xe, ye, _ = history[-1]
-
-    # maximize the distance
-    cartesian_distance = np.sqrt(
-        (xs - xe) ** 2 + (ys - ye) ** 2,
-    )
-    return cartesian_distance
-
-# Global variables
-SPAWN_POS = [0, 0, 0.1]
+SPAWN_POS = [0, 0, 0.1]  # Low spawn height - bounding box correction will adjust
 NUM_OF_MODULES = 30
 # TARGET_POSITION = [5, 0, 0.5]
 
-# def fitness_function_olympics(history: list[tuple[float, float, float]]) -> float:
-#     """Calculate fitness based on robot's trajectory history.
-
-#     xt, yt, zt = TARGET_POSITION
-#     xc, yc, zc = history[-1]
-
-#     # Minimize the distance --> maximize the negative distance
-#     cartesian_distance = np.sqrt(
-#         (xt - xc) ** 2 + (yt - yc) ** 2 + (zt - zc) ** 2,
-#     )
-#     return -cartesian_distance
 
 def create_individual(con_twisty: bool) -> Individual:
     ind = Individual()
@@ -359,7 +320,7 @@ def run_for_fitness(robot: CoreModule, individual: Individual) -> float:
     for i in range(len(robot.spec.geoms)):
         robot.spec.geoms[i].rgba[-1] = 0.5
     
-    world.spawn(robot.spec, spawn_position=SPAWN_POS)
+    world.spawn(robot.spec, spawn_position=SPAWN_POS, correct_for_bounding_box=False)
     model = world.spec.compile()
     data = mujoco.MjData(model)
     mujoco.mj_resetData(model, data)
@@ -780,7 +741,7 @@ def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None:
         robot.spec.geoms[i].rgba[-1] = 0.5
 
     # Spawn the robot at the world
-    world.spawn(robot.spec, spawn_position=SPAWN_POS) #read as champion_robot.spec. it's just being accessed through the parameter name robot.
+    world.spawn(robot.spec, spawn_position=SPAWN_POS, correct_for_bounding_box=False) #read as champion_robot.spec. it's just being accessed through the parameter name robot.
 
     # Compile the model
     model = world.spec.compile()
