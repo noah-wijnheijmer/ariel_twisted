@@ -10,18 +10,11 @@ Notes
     For now everything is copied from a004, exact implementation needed. 
     Look into CGA approach (papers on the WA group)
 
-References
-----------
-    
+TODO:
 
-Todo
-----
-    [ ] documentation
-    [ ] implement crossover
-    [ ] implement mutation
-    [ ] implement evaluation (import from main twisty script?)
-    [ ] implement survivor selection
-    [ ] implement main evolve() method
+[ ] normalize weights
+[ ] add parameters as input to evolve instead of getting them from EASettings
+[ ] increasing num of gens and stuff as it increases
 
 """
 import random
