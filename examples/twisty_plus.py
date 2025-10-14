@@ -26,7 +26,7 @@ Todo
 ----
 [ ] Add more sophisticated fitness functions
 [ ] Implement co-evolution of brain and body?
-[x] Add statistical analysis of results
+[ ] Make sure that every morphology always has a body (Error evaluating individual: 'CoreModule' object has no attribute 'body'  )
 
 """
 
@@ -98,7 +98,7 @@ RNG = np.random.default_rng(SEED)
 
 # Global variables
 EVOLUTION_CONFIG = {
-    "generations": 50,
+    "generations": 10,
     "population_size": 20,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
@@ -287,11 +287,99 @@ def tournament_selection(population: list[Individual], tournament_size: int = 3)
     return max(tournament, key=lambda ind: ind.fitness)
 
 
-def evolve_generation(population: list[Individual], 
-                     mutation_rate: float = 0.1,
-                     elitism: int = 1) -> list[Individual]:
-    """Evolve one generation with tournament selection and elitism."""
+def crossover_individuals(
+    parent1: Individual, 
+    parent2: Individual, 
+    alpha: float = 0.5,
+) -> Individual:
+    """Create offspring by crossing over probability matrices from two parents.
     
+    Uses Blend Crossover (BLX-alpha) where offspring values are sampled from
+    intervals around parent values, allowing exploration beyond parent bounds.
+    
+    Args:
+        parent1: First parent individual
+        parent2: Second parent individual
+        alpha: Blend factor controlling exploration range (typical: 0.1-0.5)
+        
+    Returns:
+        New individual created through blend crossover
+    """
+    # Extract probability matrices from both parents
+    type_probs1, conn_probs1, rotation_probs1 = parent1.genotype
+    type_probs2, conn_probs2, rotation_probs2 = parent2.genotype
+    
+    # Convert to numpy arrays for easier manipulation
+    type1, type2 = np.array(type_probs1), np.array(type_probs2)
+    conn1, conn2 = np.array(conn_probs1), np.array(conn_probs2)
+    rot1, rot2 = np.array(rotation_probs1), np.array(rotation_probs2)
+    
+    # Apply blend crossover to each matrix
+    child_type = _blend_crossover_matrix(type1, type2, alpha)
+    child_conn = _blend_crossover_matrix(conn1, conn2, alpha)
+    child_rot = _blend_crossover_matrix(rot1, rot2, alpha)
+    
+    # Determine twisty status - inherit if either parent is twisty
+    twisty = parent1.twisty or parent2.twisty
+    
+    # Enforce twisty constraint for non-twisty individuals
+    if not twisty:
+        child_rot[:, TWIST_I] = 0
+    
+    return create_individual_from_matrices(
+        child_type, child_conn, child_rot, twisty
+    )
+
+
+def _blend_crossover_matrix(
+    matrix1: np.ndarray, matrix2: np.ndarray, alpha: float,
+) -> np.ndarray:
+    """Apply Blend Crossover (BLX-alpha) to two matrices element-wise.
+    
+    For each gene pair (x1, x2), creates offspring value in interval:
+    [min(x1,x2) - alpha*|x1-x2|, max(x1,x2) + alpha*|x1-x2|]
+    
+    Args:
+        matrix1: First parent matrix
+        matrix2: Second parent matrix
+        alpha: Blend factor controlling exploration range
+        
+    Returns:
+        Offspring matrix with blended values
+    """
+    # Calculate min, max, and difference for each gene pair
+    min_vals = np.minimum(matrix1, matrix2)
+    max_vals = np.maximum(matrix1, matrix2)
+    diff = np.abs(matrix1 - matrix2)
+    
+    # Calculate blend interval bounds
+    lower_bound = min_vals - alpha * diff
+    upper_bound = max_vals + alpha * diff
+    
+    # Sample uniformly from blend intervals
+    child_matrix = RNG.uniform(lower_bound, upper_bound)
+    
+    # Ensure values stay in [0, 1] range for probability matrices
+    child_matrix = np.clip(child_matrix, 0.0, 1.0)
+    
+    return child_matrix
+
+
+def evolve_generation(population: list[Individual], 
+                                    mutation_rate: float = 0.1,
+                                    crossover_rate: float = 0.7,
+                                    elitism: int = 1) -> list[Individual]:
+    """Evolve one generation with tournament selection and elitism.
+    
+    Args:
+        population: Current population to evolve
+        mutation_rate: Probability of mutation for each matrix type
+        crossover_rate: Probability of using crossover vs mutation-only
+        elitism: Number of best individuals to keep unchanged
+        
+    Returns:
+        New evolved population
+    """
     # Sort by fitness for elitism
     population.sort(key=lambda ind: ind.fitness, reverse=True)
     
@@ -301,10 +389,22 @@ def evolve_generation(population: list[Individual],
     # Elitism - keep best individual(s)
     new_population.extend(population[:elitism])
     
-    # Generate offspring through mutation
+    # Generate offspring through crossover and mutation
     while len(new_population) < len(population):
-        parent = tournament_selection(population)
-        child = mutate_individual(parent, mutation_rate)
+        if RNG.random() < crossover_rate:
+            # Crossover: select two parents and create offspring
+            parent1 = tournament_selection(population)
+            parent2 = tournament_selection(population)
+            child = crossover_individuals(parent1, parent2)
+            
+            # Apply mutation to crossover offspring (optional but recommended)
+            if RNG.random() < mutation_rate:
+                child = mutate_individual(child, mutation_rate * 0.5)  # Lower mutation rate for crossover offspring
+        else:
+            # Mutation only: select one parent and mutate
+            parent = tournament_selection(population)
+            child = mutate_individual(parent, mutation_rate)
+        
         new_population.append(child)
     
     return new_population
