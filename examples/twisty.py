@@ -74,7 +74,7 @@ console = Console()
 RNG = np.random.default_rng(SEED)
 
 # Global variables
-SPAWN_POS = [0, 0, 0.1]
+SPAWN_POS = [0, 0, 0]
 NUM_OF_MODULES = 30
 # TARGET_POSITION = [5, 0, 0.5]
 
@@ -93,16 +93,16 @@ NUM_OF_MODULES = 30
 class EASettings(BaseSettings):
 
     # world: SimpleFlatWorld = SimpleFlatWorld()
-    starting_pos: list[float] = [0, 0, 0.1]
+    starting_pos: list[float] = [0, 0, 0]
 
     # Robot evolution parameters
     population_size: int = 1
     num_of_generations: int = 1
 
     # Neuroevolution parameters
-    population_size_brains: int = 4
-    num_of_generations_brains: int = 10
-    mutation_rate_brains: float = 1
+    population_size_brains: int = 2
+    num_of_generations_brains: int = 3
+    mutation_rate_brains: float = 0
     mutation_magnitude_brains: float = 0.5
     mutation_scale_brains: float = 5.0
     
@@ -187,13 +187,20 @@ def main() -> None:
         # twisty is True
         initial_population.append(create_individual(True))
     # Print all nodes
-    NE = NeuroEvolution(
-            fitness_function=fitness_function_basic,
-            config=config,
-        )
     for ind in initial_population:
         # core = construct_mjspec_from_graph(ind.genotype)
-        brain = NE.evolve(ind)
+        ne = NeuroEvolution(
+            fitness_function=fitness_function_basic,
+            nn_hidden_layers=config.nn_hidden_layers,
+            population_size=config.population_size_brains,
+            num_of_generations=config.num_of_generations_brains,
+            mutation_rate=config.mutation_rate_brains,
+            mutation_magnitude=config.mutation_magnitude_brains,
+            mutation_scale=config.mutation_scale_brains,
+            starting_pos=config.starting_pos,
+            is_maximisation=config.is_maximisation,
+        )
+        brain = ne.evolve(ind)
         ind.brain_genotype = brain
         # Simulate the robot
         # run(core, ind)

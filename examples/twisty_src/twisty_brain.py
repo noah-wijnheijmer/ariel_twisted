@@ -8,6 +8,7 @@ modular robots through neuroevolution.
 import mujoco
 import torch
 import torch.nn as nn
+from torch.nn.utils.parametrizations import weight_norm
 import numpy as np
 
 # Import local libraries
@@ -46,12 +47,12 @@ class RobotBrain(nn.Module):
         prev_size = input_size
         
         for hidden_size in hidden_layers:
-            layers.append(nn.Linear(prev_size, hidden_size))
+            layers.append(weight_norm(nn.Linear(prev_size, hidden_size)))
             layers.append(nn.ReLU())
             prev_size = hidden_size
         
         # Output layer
-        layers.append(nn.Linear(prev_size, output_size))
+        layers.append(weight_norm(nn.Linear(prev_size, output_size)))
         layers.append(nn.Tanh())  # Tanh to bound outputs to [-1, 1]
         
         self.network = nn.Sequential(*layers)

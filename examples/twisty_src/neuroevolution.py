@@ -12,11 +12,13 @@ Notes
 
 TODO:
 
-[ ] normalize weights
-[ ] add parameters as input to evolve instead of getting them from EASettings
-[ ] increasing num of gens and stuff as it increases
+[x] normalize weights
+[x] add parameters as input to evolve instead of getting them from EASettings
+    NOTE: this is passed as a constructor to NE class, not evlove itself
+[LATER] increasing num of gens and stuff as it increases
 
 """
+from dataclasses import dataclass
 import random
 from pathlib import Path
 import numpy as np
@@ -37,6 +39,7 @@ from ariel.utils.video_recorder import VideoRecorder
 from ariel.utils.runners import simple_runner
 from ariel.ec.a005 import Crossover
 from typing import cast
+from typing import Any
 
 console = Console()
 
@@ -45,19 +48,53 @@ SCRIPT_NAME = __file__.split("/")[-1][:-3]
 CWD = Path.cwd()
 DATA = Path(CWD / "__data__" / SCRIPT_NAME)
 DATA.mkdir(exist_ok=True)
+VIDEO_PATH = Path("examples/twisty_videos")
 SEED = 40
 
 class NeuroEvolution:
     type Population = list[Individual]
-
+    
+    @dataclass
+    class NESettings:
+        fitness_function: Callable[[list[float]], float]
+        nn_hidden_layers: list[int]
+        starting_pos: list[float]
+        is_maximisation: bool
+        num_of_generations: int
+        population_size: int
+        mutation_rate: float
+        mutation_scale: float
+        mutation_magnitude: float
+        random_seed: int = 42
+    
     def __init__(
             self,
             fitness_function: Callable[[list[float]], float],
-            config, # EASettings
+            nn_hidden_layers: list[int],
+            starting_pos: list[float],
+            is_maximisation: bool,
+            num_of_generations: int,
+            population_size: int,
+            mutation_rate: float,
+            mutation_scale: float,
+            mutation_magnitude: float,
+            random_seed: int = 42
             ):
-        self.config = config
+        
         self.fitness_function = fitness_function
-        self.rng = np.random.default_rng(SEED)
+        self.config = self.NESettings(
+            random_seed=random_seed,
+            fitness_function=fitness_function,
+            nn_hidden_layers=nn_hidden_layers,
+            starting_pos=starting_pos,
+            is_maximisation=is_maximisation,
+            num_of_generations=num_of_generations,
+            population_size=population_size,
+            mutation_rate=mutation_rate,
+            mutation_scale=mutation_scale,
+            mutation_magnitude=mutation_magnitude,
+        )
+        self.rng = np.random.default_rng(self.config.random_seed)
 
     def create_individual(self,
                           input_size: int,
@@ -121,14 +158,14 @@ class NeuroEvolution:
 
         for ind in population:
             if ind.tags.get("mut", False):
-                if np.random.random() > self.config.mutation_rate_brains:
+                if np.random.random() > self.config.mutation_rate:
                     continue
                 
                 mutated = cast("list[int]", ind.genotype)
                 for gene in mutated:
-                    if np.random.random() > self.config.mutation_magnitude_brains:
+                    if np.random.random() > self.config.mutation_magnitude:
                         continue
-                    gene += np.random.normal(loc=0.0, scale=self.config.mutation_scale_brains)
+                    gene += np.random.normal(loc=0.0, scale=self.config.mutation_scale)
 
                 ind.genotype = mutated
                 ind.requires_eval = True
@@ -240,20 +277,26 @@ class NeuroEvolution:
 
             # Records video of the simulation TODO, alongside saving genotypes
             case "video":
-                twisty_or_not = "twisty" if original_ind.twisty else "not_twisty"
-                path_to_video_folder = str(DATA / "videos" / twisty_or_not)
-                vid_path = Path(path_to_video_folder)
-                vid_path.mkdir(exist_ok=True)
-                video_recorder = VideoRecorder(output_folder=path_to_video_folder)
+                # twisty_or_not = "twisty" if original_ind.twisty else "not_twisty"
+                # path_to_video_folder = str(VIDEO_PATH / twisty_or_not)
+                # vid_path = Path(path_to_video_folder)
+                # vid_path.mkdir(parents=True, exist_ok=True)
+                # video_recorder = VideoRecorder(output_folder=path_to_video_folder)
 
-                # Render with video recorder
-                video_renderer(
+                # # Render with video recorder
+                # video_renderer(
+                #     model,
+                #     data,
+                #     duration=30,
+                #     video_recorder=video_recorder,
+                # )
+                # TODO remove below and uncomment above when done
+                simple_runner(
                     model,
                     data,
                     duration=30,
-                    video_recorder=video_recorder,
                 )
-            
+                
             case _:
                 console.log(f"Mode '{mode}' not recognized. No simulation run.")
 
@@ -274,7 +317,7 @@ class NeuroEvolution:
 
             # Termination condition
             current_pop_size -= 1
-            if current_pop_size <= self.config.population_size_brains:
+            if current_pop_size <= self.config.population_size:
                 break
 
         return population
@@ -304,13 +347,12 @@ class NeuroEvolution:
         mujoco.mj_resetData(model, data)
 
         # Create initial population
-        brain_population = [self.create_individual(nn_input_size, nn_output_size, self.config.nn_hidden_layers) for _ in range(self.config.population_size_brains)]
+        brain_population = [self.create_individual(nn_input_size, nn_output_size, self.config.nn_hidden_layers) 
+                            for _ in range(self.config.population_size)]
         brain_population = self.evaluate(original_ind, brain_population, nn_input_size, nn_output_size)
         previous_best_brain = sorted(brain_population, key=lambda ind: ind.fitness, reverse=self.config.is_maximisation)[0]
         self.run(original_ind, previous_best_brain, nn_input_size, nn_output_size, mode="video")
-
-        console.log(f"{30 * '='}\nInitialization done\n{30 * '-'}\nStarting neuroevolution\n{30 * '='}\n")
-
+        
         for _ in range(self.config.num_of_generations):
             brain_population = self.parent_selection(brain_population)
             brain_population = self.crossover(brain_population)
@@ -327,7 +369,11 @@ class NeuroEvolution:
         best_brain = sorted(brain_population, key=lambda ind: ind.fitness, reverse=self.config.is_maximisation)[0]
 
         # Uncomment for debug to see best brain in action at the end of evolution
-        # self.run(original_ind, best_brain, nn_input_size, nn_output_size, mode="launcher")
+        self.run(original_ind, best_brain, nn_input_size, nn_output_size, mode="launcher")
 
         return best_brain.genotype
+    
+    def get_hyperparameters(self) -> dict[Any, Any]:
+        """Returns the hyperparameters used in the neuroevolution process."""
+        return self.config.__dict__
         
