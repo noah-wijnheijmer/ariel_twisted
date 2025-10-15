@@ -30,7 +30,7 @@ from rich.console import Console
 
 from ariel.body_phenotypes.robogen_lite.constructor import construct_mjspec_from_graph
 from ariel.ec.a001 import Individual, JSONIterable
-from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
+from ariel.simulation.environments import SimpleFlatWorld
 from ariel.utils.tracker import Tracker
 from ariel.simulation.controllers.controller import Controller
 from twisty_src.twisty_brain import RobotBrain
@@ -223,7 +223,9 @@ class NeuroEvolution:
             robot.spec.geoms[i].rgba[-1] = 0.5
 
         # Spawn the robot at the world
-        world.spawn(robot.spec, spawn_position=self.config.starting_pos)
+        world.spawn(robot.spec,
+                    position=self.config.starting_pos,
+                    correct_collision_with_floor=True)
 
         # Compile the model
         model = world.spec.compile()
@@ -232,14 +234,8 @@ class NeuroEvolution:
         # Reset state and time of simulation
         mujoco.mj_resetData(model, data)
 
-        # TODO save genotype
-        # Save the model to XML
-        # xml = world.spec.to_xml()
-        # with (DATA / f"{SCRIPT_NAME}.xml").open("w", encoding="utf-8") as f:
-        #     f.write(xml)
-
-        # Define action specification and set policy
-        data.ctrl = self.rng.normal(scale=0.1, size=model.nu)
+        # # Define action specification and set policy
+        # data.ctrl = self.rng.normal(scale=0.1, size=model.nu)
 
         # Initialize robot tracker
         mujoco_type_to_find = mujoco.mjtObj.mjOBJ_GEOM
@@ -253,11 +249,12 @@ class NeuroEvolution:
         # Initialize controller
         ctrl = Controller(
             controller_callback_function=brain.forward_control,
-            time_steps_per_ctrl_step=1,
             tracker=tracker,
         )
 
-        mujoco.set_mjcb_control(lambda m, d: ctrl.set_control(m, d))
+        mujoco.set_mjcb_control(
+            lambda m, d: ctrl.set_control(m, d)
+        )
 
         match mode:
             # Launches interactive viewer
@@ -277,24 +274,18 @@ class NeuroEvolution:
 
             # Records video of the simulation TODO, alongside saving genotypes
             case "video":
-                # twisty_or_not = "twisty" if original_ind.twisty else "not_twisty"
-                # path_to_video_folder = str(VIDEO_PATH / twisty_or_not)
-                # vid_path = Path(path_to_video_folder)
-                # vid_path.mkdir(parents=True, exist_ok=True)
-                # video_recorder = VideoRecorder(output_folder=path_to_video_folder)
+                twisty_or_not = "twisty" if original_ind.twisty else "not_twisty"
+                path_to_video_folder = str(VIDEO_PATH / twisty_or_not)
+                vid_path = Path(path_to_video_folder)
+                vid_path.mkdir(parents=True, exist_ok=True)
+                video_recorder = VideoRecorder(output_folder=path_to_video_folder)
 
-                # # Render with video recorder
-                # video_renderer(
-                #     model,
-                #     data,
-                #     duration=30,
-                #     video_recorder=video_recorder,
-                # )
-                # TODO remove below and uncomment above when done
-                simple_runner(
+                # Render with video recorder
+                video_renderer(
                     model,
                     data,
                     duration=30,
+                    video_recorder=video_recorder,
                 )
                 
             case _:
@@ -337,7 +328,7 @@ class NeuroEvolution:
         robot = construct_mjspec_from_graph(original_ind.genotype)
 
         world = SimpleFlatWorld()
-        world.spawn(robot.spec, spawn_position=self.config.starting_pos)
+        world.spawn(robot.spec, position=self.config.starting_pos)
 
         model = world.spec.compile()
         data = mujoco.MjData(model)
