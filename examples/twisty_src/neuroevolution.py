@@ -71,7 +71,7 @@ class NeuroEvolution:
     
     def __init__(
             self,
-            fitness_function: Callable[[list[float]], float],
+            fitness_function: Any,
             nn_hidden_layers: list[int],
             starting_pos: list[float],
             is_maximisation: bool,
@@ -263,7 +263,7 @@ class NeuroEvolution:
             robot.spec.geoms[i].rgba[-1] = 0.5
 
         # Spawn the robot at the world
-        world.spawn(robot.spec, spawn_position=self.config.starting_pos)
+        world.spawn(robot.spec, spawn_position=self.config.starting_pos, correct_for_bounding_box=True)
 
         # Compile the model
         model = world.spec.compile()
@@ -346,17 +346,14 @@ class NeuroEvolution:
 
         # Generate the model and data to determine input + output sizes of NN
 
-        mujoco.set_mjcb_control(None) # NOTE: IDK WHY THIS NEEDS TO BE HERE BUT IT WORKS SO I'M NOT COMPLAINING
-
         if use_gecko:
             robot = gecko()
         else:
             robot = construct_mjspec_from_graph(original_ind.genotype)
-
-        world = SimpleFlatWorld(
-
-        )
-        world.spawn(robot.spec, spawn_position=self.config.starting_pos)
+        
+        mujoco.set_mjcb_control(None)
+        world = SimpleFlatWorld()
+        world.spawn(robot.spec, spawn_position=self.config.starting_pos, correct_for_bounding_box=True)
 
         model = world.spec.compile()
         data = mujoco.MjData(model)
@@ -424,7 +421,7 @@ if __name__ == "__main__":
             mutation_rate=0.1,
             mutation_magnitude=0.05,
             mutation_scale=0.5,
-            starting_pos=[0, 0, 1],
+            starting_pos=[0, 0, 0],
             is_maximisation=True,
             tournament_size=3,
         )
