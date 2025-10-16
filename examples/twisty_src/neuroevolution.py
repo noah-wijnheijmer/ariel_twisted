@@ -33,23 +33,24 @@ from ariel.ec.a001 import Individual, JSONIterable
 from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
 from ariel.utils.tracker import Tracker
 from ariel.simulation.controllers.controller import Controller
-from twisty_src.twisty_brain import RobotBrain
+from twisty_brain import RobotBrain
 from ariel.utils.renderers import video_renderer
 from ariel.utils.video_recorder import VideoRecorder
 from ariel.utils.runners import simple_runner
 from ariel.ec.a005 import Crossover
 from typing import cast
 from typing import Any
+from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko import gecko
 
 console = Console()
 
 # Global constants
-SCRIPT_NAME = __file__.split("/")[-1][:-3]
-CWD = Path.cwd()
-DATA = Path(CWD / "__data__" / SCRIPT_NAME)
-DATA.mkdir(exist_ok=True)
+# SCRIPT_NAME = __file__.split("/")[-1][:-3]
+# CWD = Path.cwd()
+# DATA = Path(CWD / "__data__" / SCRIPT_NAME)
+# DATA.mkdir(exist_ok=True)
 VIDEO_PATH = Path("examples/twisty_videos")
-SEED = 40
+SEED = 42
 
 class NeuroEvolution:
     type Population = list[Individual]
@@ -95,6 +96,7 @@ class NeuroEvolution:
             mutation_magnitude=mutation_magnitude,
         )
         self.rng = np.random.default_rng(self.config.random_seed)
+        self.id_counter = 0
 
     def create_individual(self,
                           input_size: int,
@@ -107,6 +109,8 @@ class NeuroEvolution:
         )
 
         ind = Individual()
+        ind.id = self.id_counter
+        self.id_counter += 1
         ind.genotype = new_brain.get_weights_as_vector().tolist()
         ind.tags = {"mut": False}
         return ind
@@ -138,12 +142,16 @@ class NeuroEvolution:
 
             # First child
             child_i = Individual()
+            child_i.id = self.id_counter
+            self.id_counter += 1
             child_i.genotype = genotype_i
             child_i.tags = {"mut": True}
             child_i.requires_eval = True
 
             # Second child
             child_j = Individual()
+            child_j.id = self.id_counter
+            self.id_counter += 1
             child_j.genotype = genotype_j
             child_j.tags = {"mut": True}
             child_j.requires_eval = True
@@ -155,12 +163,10 @@ class NeuroEvolution:
         """
             Normal creep mutation -> add small gaussian noise to some genes.
         """
-
         for ind in population:
             if ind.tags.get("mut", False):
                 if np.random.random() > self.config.mutation_rate:
                     continue
-                
                 mutated = cast("list[int]", ind.genotype)
                 for gene in mutated:
                     if np.random.random() > self.config.mutation_magnitude:
@@ -178,18 +184,24 @@ class NeuroEvolution:
         return population
 
     def evaluate(self,
-                 original_ind: Individual,
-                 brain_pop: Population,
-                 nn_input_size: int,
-                 nn_output_size: int
+                original_ind: Individual,
+                brain_pop: Population,
+                nn_input_size: int,
+                nn_output_size: int,
+                use_gecko: bool=False,
+                verbose: bool=False,
     ) -> Population:
         
         for ind in brain_pop:
             if ind.requires_eval:
-                history = self.run(original_ind, ind, nn_input_size, nn_output_size)
-                ind.fitness = self.fitness_function(history)
+                history = self.run(original_ind, ind, nn_input_size, nn_output_size, use_gecko=use_gecko)
+                ind.fitness = self.fitness_function(self.config.starting_pos, history)
                 ind.requires_eval = False
-                console.log(f"Evaluated robot {original_ind.id} using brain {ind.id} with fitness: {ind.fitness}")
+                if verbose:
+                    if use_gecko:
+                        console.log(f"Evaluated gecko using brain {ind.id} with fitness: {ind.fitness}")
+                    else:
+                        console.log(f"Evaluated robot {original_ind.id} using brain {ind.id} with fitness: {ind.fitness}")
 
         return brain_pop
 
@@ -200,6 +212,7 @@ class NeuroEvolution:
         nn_input_size: int,
         nn_output_size: int,
         mode: str = "simple_runner",
+        use_gecko: bool = False
     ) -> Population:
         
         # THIS IS CRAZY INEFFICIENT CHANGE IT LATER
@@ -211,7 +224,11 @@ class NeuroEvolution:
         )
         brain.set_weights_from_vector(brain_ind.genotype)
         # ------------------------------------------------------------------ #
-        robot = construct_mjspec_from_graph(original_ind.genotype)
+        
+        if use_gecko:
+            robot = gecko()
+        else:
+            robot = construct_mjspec_from_graph(original_ind.genotype)
 
         mujoco.set_mjcb_control(None)
 
@@ -231,12 +248,6 @@ class NeuroEvolution:
 
         # Reset state and time of simulation
         mujoco.mj_resetData(model, data)
-
-        # TODO save genotype
-        # Save the model to XML
-        # xml = world.spec.to_xml()
-        # with (DATA / f"{SCRIPT_NAME}.xml").open("w", encoding="utf-8") as f:
-        #     f.write(xml)
 
         # Define action specification and set policy
         data.ctrl = self.rng.normal(scale=0.1, size=model.nu)
@@ -277,24 +288,22 @@ class NeuroEvolution:
 
             # Records video of the simulation TODO, alongside saving genotypes
             case "video":
-                # twisty_or_not = "twisty" if original_ind.twisty else "not_twisty"
-                # path_to_video_folder = str(VIDEO_PATH / twisty_or_not)
-                # vid_path = Path(path_to_video_folder)
-                # vid_path.mkdir(parents=True, exist_ok=True)
-                # video_recorder = VideoRecorder(output_folder=path_to_video_folder)
+                if use_gecko:
+                    twisty_or_not = "gecko"
+                else:
+                    twisty_or_not = "twisty" if original_ind.twisty else "not_twisty"   
+                path_to_video_folder = str(VIDEO_PATH / twisty_or_not)
+                    
+                vid_path = Path(path_to_video_folder)
+                vid_path.mkdir(parents=True, exist_ok=True)
+                video_recorder = VideoRecorder(output_folder=path_to_video_folder)
 
-                # # Render with video recorder
-                # video_renderer(
-                #     model,
-                #     data,
-                #     duration=30,
-                #     video_recorder=video_recorder,
-                # )
-                # TODO remove below and uncomment above when done
-                simple_runner(
+                # Render with video recorder
+                video_renderer(
                     model,
                     data,
                     duration=30,
+                    video_recorder=video_recorder,
                 )
                 
             case _:
@@ -322,7 +331,7 @@ class NeuroEvolution:
 
         return population
     
-    def evolve(self, original_ind: Individual) -> JSONIterable:
+    def evolve(self, original_ind: Individual, use_gecko: bool=False, verbose: bool =False) -> JSONIterable:
         
         """
 
@@ -331,12 +340,20 @@ class NeuroEvolution:
         
         """
 
+        console.log("[bold cyan]Starting Neuroevolution Process")
+
         # Generate the model and data to determine input + output sizes of NN
 
         mujoco.set_mjcb_control(None) # NOTE: IDK WHY THIS NEEDS TO BE HERE BUT IT WORKS SO I'M NOT COMPLAINING
-        robot = construct_mjspec_from_graph(original_ind.genotype)
 
-        world = SimpleFlatWorld()
+        if use_gecko:
+            robot = gecko()
+        else:
+            robot = construct_mjspec_from_graph(original_ind.genotype)
+
+        world = SimpleFlatWorld(
+
+        )
         world.spawn(robot.spec, spawn_position=self.config.starting_pos)
 
         model = world.spec.compile()
@@ -349,27 +366,37 @@ class NeuroEvolution:
         # Create initial population
         brain_population = [self.create_individual(nn_input_size, nn_output_size, self.config.nn_hidden_layers) 
                             for _ in range(self.config.population_size)]
-        brain_population = self.evaluate(original_ind, brain_population, nn_input_size, nn_output_size)
+        brain_population = self.evaluate(original_ind, brain_population, nn_input_size, nn_output_size, use_gecko=use_gecko, verbose=verbose)
         previous_best_brain = sorted(brain_population, key=lambda ind: ind.fitness, reverse=self.config.is_maximisation)[0]
-        self.run(original_ind, previous_best_brain, nn_input_size, nn_output_size, mode="video")
+        # self.run(original_ind, previous_best_brain, nn_input_size, nn_output_size, mode="video", use_gecko=use_gecko)
         
-        for _ in range(self.config.num_of_generations):
+        console.log(f"Initial best brain fitness: {previous_best_brain.fitness}")
+
+        for i in range(self.config.num_of_generations):
             brain_population = self.parent_selection(brain_population)
             brain_population = self.crossover(brain_population)
             brain_population = self.mutation(brain_population)
-            brain_population = self.evaluate(original_ind, brain_population, nn_input_size, nn_output_size)
+            brain_population = self.evaluate(original_ind, brain_population, nn_input_size, nn_output_size, use_gecko=use_gecko, verbose=verbose)
             brain_population = self.survivor_selection(brain_population)
             brain_population = self.reset_population_tags(brain_population)
 
             # Save video of the best brain in the generation
             best_brain_in_gen = sorted(brain_population, key=lambda ind: ind.fitness, reverse=self.config.is_maximisation)[0]
-            if previous_best_brain.genotype != best_brain_in_gen.genotype:
-                self.run(original_ind, best_brain_in_gen, nn_input_size, nn_output_size, mode="video")
+            # if previous_best_brain.genotype != best_brain_in_gen.genotype:
+            #     self.run(original_ind, best_brain_in_gen, nn_input_size, nn_output_size, mode="video", use_gecko=use_gecko)
+            
+            if verbose:
+                console.log(f"Generation {i+1}/{self.config.num_of_generations} completed.\t Fitness of best brain: {best_brain_in_gen.fitness}")
 
         best_brain = sorted(brain_population, key=lambda ind: ind.fitness, reverse=self.config.is_maximisation)[0]
 
         # Uncomment for debug to see best brain in action at the end of evolution
-        self.run(original_ind, best_brain, nn_input_size, nn_output_size, mode="launcher")
+
+        # Save best brain video
+        self.run(original_ind, best_brain, nn_input_size, nn_output_size, mode="video", use_gecko=use_gecko)
+
+        # Run best brain in launcher
+        self.run(original_ind, best_brain, nn_input_size, nn_output_size, mode="launcher", use_gecko=use_gecko)
 
         return best_brain.genotype
     
@@ -377,3 +404,27 @@ class NeuroEvolution:
         """Returns the hyperparameters used in the neuroevolution process."""
         return self.config.__dict__
         
+# Example usage
+
+if __name__ == "__main__":
+    def fitness_function_basic(starting_pos: list[float], history: list[float]) -> float:
+        xs, _, _ = starting_pos
+        xe, _, _ = history[-1]
+
+        # maximize the distance
+        x_distance = xs - xe
+        return x_distance
+
+    ne = NeuroEvolution(
+            fitness_function=fitness_function_basic,
+            nn_hidden_layers=[64, 32],
+            population_size=2,
+            num_of_generations=1,
+            mutation_rate=0.1,
+            mutation_magnitude=0.05,
+            mutation_scale=0.5,
+            starting_pos=[0, 0, 0],
+            is_maximisation=True,
+        )
+
+    ne.evolve(None, use_gecko=True, verbose=True)

@@ -26,35 +26,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 # Third-party libraries
-import mujoco
 import numpy as np
 from rich.console import Console
-from mujoco import viewer
 
 # Local libraries
 from ariel.body_phenotypes.robogen_lite.config import (NUM_OF_FACES,
                                                        NUM_OF_ROTATIONS,
                                                        NUM_OF_TYPES_OF_MODULES)
-from ariel.body_phenotypes.robogen_lite.constructor import \
-    construct_mjspec_from_graph
 from ariel.body_phenotypes.robogen_lite.decoders.hi_prob_decoding import (
     HighProbabilityDecoder, save_graph_as_json)
-from ariel.body_phenotypes.robogen_lite.modules.core import CoreModule
-from ariel.simulation.controllers.cpg_with_sensory_feedback import \
-    CPGSensoryFeedback
-from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
-# from ariel.simulation.environments import OlympicArena
-from ariel.utils.renderers import video_renderer
-from ariel.utils.video_recorder import VideoRecorder
 from ariel.ec.a001 import Individual
-from ariel.simulation.controllers.controller import Controller
-from ariel.utils.tracker import Tracker
-from ariel.utils.runners import simple_runner
 from pydantic_settings import BaseSettings
 from twisty_src.neuroevolution import NeuroEvolution
-
-# DEBUG
-import copy
 
 if TYPE_CHECKING:
     from networkx import DiGraph
@@ -89,10 +72,10 @@ class EASettings(BaseSettings):
 
     # Neuroevolution parameters
     population_size_brains: int = 2
-    num_of_generations_brains: int = 3
-    mutation_rate_brains: float = 0
-    mutation_magnitude_brains: float = 0.5
-    mutation_scale_brains: float = 5.0
+    num_of_generations_brains: int = 1
+    mutation_rate_brains: float = 0.1
+    mutation_magnitude_brains: float = 0.05
+    mutation_scale_brains: float = 0.5
     
     
     nn_hidden_layers: list[int] = [64, 32]
@@ -166,13 +149,13 @@ def main() -> None:
     # Initialize population of robot morphologies
     console.log(f"[yellow]Creating population of {population_size} robot morphologies...")
     initial_population = []
-    for _ in range(population_size):
-        # twisty is false, no 45 degrees angles
-        initial_population.append(create_individual(False))
+    # for _ in range(population_size):
+    #     # twisty is false, no 45 degrees angles
+    #     initial_population.append(create_individual(False))
     for _ in range(population_size):
         # twisty is True
         initial_population.append(create_individual(True))
-    # Print all nodes
+
     for ind in initial_population:
         # core = construct_mjspec_from_graph(ind.genotype)
         ne = NeuroEvolution(
@@ -186,10 +169,8 @@ def main() -> None:
             starting_pos=config.starting_pos,
             is_maximisation=config.is_maximisation,
         )
-        brain = ne.evolve(ind)
+        brain = ne.evolve(ind, use_gecko=True, verbose=True)
         ind.brain_genotype = brain
-        # Simulate the robot
-        # run(core, ind)
 
 if __name__ == "__main__":
     # Test several times
