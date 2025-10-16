@@ -67,6 +67,7 @@ class NeuroEvolution:
         mutation_scale: float
         mutation_magnitude: float
         random_seed: int = 42
+        tournament_size: int = 5
     
     def __init__(
             self,
@@ -79,7 +80,8 @@ class NeuroEvolution:
             mutation_rate: float,
             mutation_scale: float,
             mutation_magnitude: float,
-            random_seed: int = 42
+            random_seed: int = 42,
+            tournament_size: int = 5,
             ):
         
         self.fitness_function = fitness_function
@@ -94,6 +96,7 @@ class NeuroEvolution:
             mutation_rate=mutation_rate,
             mutation_scale=mutation_scale,
             mutation_magnitude=mutation_magnitude,
+            tournament_size=tournament_size,
         )
         self.rng = np.random.default_rng(self.config.random_seed)
         self.id_counter = 0
@@ -115,19 +118,19 @@ class NeuroEvolution:
         ind.tags = {"mut": False}
         return ind
 
-    def parent_selection(self, population: Population) -> Population:
-        random.shuffle(population)
-        for idx in range(0, len(population) - 1, 2):
-            ind_i = population[idx]
-            ind_j = population[idx + 1]
+    def tournament_parent_selection(self, population: Population) -> Population:
+        selected_indices = random.sample(range(len(population)), min(self.config.tournament_size, len(population)))
+        tournament = [{"index": i, "individual": population[i]} for i in selected_indices]
+        tournament = sorted(tournament, key=lambda ind: ind["individual"].fitness, reverse=self.config.is_maximisation)
+        winners = tournament[:2]
+        parent_indexes = [w["index"] for w in winners]
 
-            # Compare fitness values
-            if ind_i.fitness > ind_j.fitness and self.config.is_maximisation:
-                ind_i.tags = {"ps": True}
-                ind_j.tags = {"ps": False}
+        for ind in population:
+            if ind.id in parent_indexes:
+                ind.tags = {"ps": True}
             else:
-                ind_i.tags = {"ps": False}
-                ind_j.tags = {"ps": True}
+                ind.tags = {"ps": False}
+
         return population
 
     def crossover(self, population: Population) -> Population:
@@ -205,6 +208,26 @@ class NeuroEvolution:
 
         return brain_pop
 
+    def survivor_selection(self, population: Population) -> Population:
+        random.shuffle(population)
+        current_pop_size = len(population)
+        for idx in range(len(population)):
+            ind_i = population[idx]
+            ind_j = population[idx + 1]
+
+            # Kill worse individual
+            if ind_i.fitness > ind_j.fitness and self.config.is_maximisation:
+                ind_j.alive = False
+            else:
+                ind_i.alive = False
+
+            # Termination condition
+            current_pop_size -= 1
+            if current_pop_size <= self.config.population_size:
+                break
+
+        return population
+
     def run(
         self,
         original_ind: Individual,
@@ -264,7 +287,6 @@ class NeuroEvolution:
         # Initialize controller
         ctrl = Controller(
             controller_callback_function=brain.forward_control,
-            time_steps_per_ctrl_step=1,
             tracker=tracker,
         )
 
@@ -283,7 +305,7 @@ class NeuroEvolution:
                 simple_runner(
                     model,
                     data,
-                    duration=30,
+                    duration=15,
                 )
 
             # Records video of the simulation TODO, alongside saving genotypes
@@ -302,7 +324,7 @@ class NeuroEvolution:
                 video_renderer(
                     model,
                     data,
-                    duration=30,
+                    duration=15,
                     video_recorder=video_recorder,
                 )
                 
@@ -310,26 +332,6 @@ class NeuroEvolution:
                 console.log(f"Mode '{mode}' not recognized. No simulation run.")
 
         return tracker.history["xpos"][0]
-
-    def survivor_selection(self, population: Population) -> Population:
-        random.shuffle(population)
-        current_pop_size = len(population)
-        for idx in range(len(population)):
-            ind_i = population[idx]
-            ind_j = population[idx + 1]
-
-            # Kill worse individual
-            if ind_i.fitness > ind_j.fitness and self.config.is_maximisation:
-                ind_j.alive = False
-            else:
-                ind_i.alive = False
-
-            # Termination condition
-            current_pop_size -= 1
-            if current_pop_size <= self.config.population_size:
-                break
-
-        return population
     
     def evolve(self, original_ind: Individual, use_gecko: bool=False, verbose: bool =False) -> JSONIterable:
         
@@ -366,31 +368,30 @@ class NeuroEvolution:
         # Create initial population
         brain_population = [self.create_individual(nn_input_size, nn_output_size, self.config.nn_hidden_layers) 
                             for _ in range(self.config.population_size)]
-        brain_population = self.evaluate(original_ind, brain_population, nn_input_size, nn_output_size, use_gecko=use_gecko, verbose=verbose)
+        brain_population = self.evaluate(original_ind, brain_population, nn_input_size, nn_output_size, use_gecko=use_gecko, verbose=False)
         previous_best_brain = sorted(brain_population, key=lambda ind: ind.fitness, reverse=self.config.is_maximisation)[0]
         # self.run(original_ind, previous_best_brain, nn_input_size, nn_output_size, mode="video", use_gecko=use_gecko)
         
         console.log(f"Initial best brain fitness: {previous_best_brain.fitness}")
+        console.log(f"Neuroevolution will run for {self.config.num_of_generations} generations.")
 
         for i in range(self.config.num_of_generations):
-            brain_population = self.parent_selection(brain_population)
+            brain_population = self.tournament_parent_selection(brain_population)
             brain_population = self.crossover(brain_population)
             brain_population = self.mutation(brain_population)
-            brain_population = self.evaluate(original_ind, brain_population, nn_input_size, nn_output_size, use_gecko=use_gecko, verbose=verbose)
+            brain_population = self.evaluate(original_ind, brain_population, nn_input_size, nn_output_size, use_gecko=use_gecko, verbose=False)
             brain_population = self.survivor_selection(brain_population)
             brain_population = self.reset_population_tags(brain_population)
 
             # Save video of the best brain in the generation
             best_brain_in_gen = sorted(brain_population, key=lambda ind: ind.fitness, reverse=self.config.is_maximisation)[0]
-            # if previous_best_brain.genotype != best_brain_in_gen.genotype:
-            #     self.run(original_ind, best_brain_in_gen, nn_input_size, nn_output_size, mode="video", use_gecko=use_gecko)
+            if i % 100 == 0: # and best_brain_in_gen.fitness > previous_best_brain.fitness:
+                self.run(original_ind, best_brain_in_gen, nn_input_size, nn_output_size, mode="video", use_gecko=use_gecko)
             
             if verbose:
                 console.log(f"Generation {i+1}/{self.config.num_of_generations} completed.\t Fitness of best brain: {best_brain_in_gen.fitness}")
 
         best_brain = sorted(brain_population, key=lambda ind: ind.fitness, reverse=self.config.is_maximisation)[0]
-
-        # Uncomment for debug to see best brain in action at the end of evolution
 
         # Save best brain video
         self.run(original_ind, best_brain, nn_input_size, nn_output_size, mode="video", use_gecko=use_gecko)
@@ -412,19 +413,20 @@ if __name__ == "__main__":
         xe, _, _ = history[-1]
 
         # maximize the distance
-        x_distance = xs - xe
+        x_distance = xe - xs
         return x_distance
 
     ne = NeuroEvolution(
             fitness_function=fitness_function_basic,
             nn_hidden_layers=[64, 32],
-            population_size=2,
-            num_of_generations=1,
+            population_size=20,
+            num_of_generations=500,
             mutation_rate=0.1,
             mutation_magnitude=0.05,
             mutation_scale=0.5,
-            starting_pos=[0, 0, 0],
+            starting_pos=[0, 0, 1],
             is_maximisation=True,
+            tournament_size=3,
         )
 
     ne.evolve(None, use_gecko=True, verbose=True)
