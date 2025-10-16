@@ -107,7 +107,7 @@ EVOLUTION_CONFIG = {
 }
 SPAWN_POS = [0, 0, 0.1]  # Low spawn height - bounding box correction will adjust
 NUM_OF_MODULES = 30
-# TARGET_POSITION = [5, 0, 0.5]
+TARGET_POSITION = [5, 0, 0.5]
 
 
 def create_individual(con_twisty: bool) -> Individual:
@@ -411,7 +411,7 @@ def evolve_generation(population: list[Individual],
 
 
 def run_for_fitness(robot: CoreModule, individual: Individual) -> float:
-    """Modified run function that returns fitness instead of rendering video."""
+    """Modified run function that returns fitness based on distance to target."""
     
     # Setup (same as existing run())
     mujoco.set_mjcb_control(None)
@@ -437,22 +437,25 @@ def run_for_fitness(robot: CoreModule, individual: Individual) -> float:
     individual.brain_genotype = cpg.c
     mujoco.set_mjcb_control(lambda m, d: policy(m, d, cpg=cpg))
     
-    # Record initial position
-    previous_pos = data.xpos[1][:2].copy()
-    individual.time_alive = 0
-    fitness = 0
-    # Run simulation for fitness (no video)
+    # Run simulation for target-seeking fitness
     simulation_time = 30.0  # seconds
-    step_one_sec = int(1/model.opt.timestep)
     steps = int(simulation_time / model.opt.timestep)
+    individual.time_alive = 0
+    
     for step in range(steps):
-        individual.time_alive = step/step_one_sec
+        individual.time_alive = step / (1/model.opt.timestep)
         mujoco.mj_step(model, data)
-        next_pos = data.xpos[1][:2]
-        if individual.time_alive.is_integer() is True:
-            if np.linalg.norm(next_pos - previous_pos) != 0:
-                fitness += (np.linalg.norm(next_pos - previous_pos)+individual.time_alive)
-    fitness = fitness/30
+    
+    # Calculate fitness based on final distance to target
+    final_position = data.xpos[1][:2].copy()  # x, y coordinates only
+    target_position = np.array([TARGET_POSITION[0], TARGET_POSITION[1]])  # x, y from target
+    
+    # Distance to target (lower is better)
+    distance_to_target = np.linalg.norm(final_position - target_position)
+    
+    # Simple inverse distance fitness (higher fitness = closer to target)
+    fitness = 1.0 / (1.0 + distance_to_target)
+    
     return fitness
 
 def evaluate_population(population: list[Individual]) -> None:
