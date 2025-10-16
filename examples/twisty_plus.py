@@ -54,10 +54,10 @@ from ariel.body_phenotypes.robogen_lite.decoders.hi_prob_decoding import (
     HighProbabilityDecoder, save_graph_as_json
 )
 from ariel.body_phenotypes.robogen_lite.modules.core import CoreModule
-from ariel.simulation.controllers.cpg_with_sensory_feedback import (
-    CPGSensoryFeedback
+from ariel.simulation.controllers.na_cpg import (
+    NaCPG, create_fully_connected_adjacency
 )
-from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
+from ariel.simulation.environments._simple_flat import SimpleFlatWorld
 # from ariel.simulation.environments import OlympicArena
 # from ariel.simulation.environments import OlympicArena
 from ariel.utils.renderers import video_renderer
@@ -70,7 +70,6 @@ from ariel.utils.runners import simple_runner
 # from evotorch.neuroevolution import NEProblem
 # from evotorch.algorithms import PGPE
 # from evotorch.logging import PandasLogger
-from ariel.simulation.controllers.controller import Controller
 from ariel.utils.tracker import Tracker
 from ariel.utils.runners import simple_runner
 # from twisty_brain import RobotBrain
@@ -98,21 +97,21 @@ RNG = np.random.default_rng(SEED)
 
 # Global variables
 EVOLUTION_CONFIG = {
-    "generations": 10,
-    "population_size": 20,
+    "generations": 2,
+    "population_size": 5,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
     "checkpoint_every": 1,  # Save checkpoint every N generations
     "auto_resume": True,    # Automatically resume from checkpoint if found
 }
 SPAWN_POS = [0, 0, 0.1]  # Low spawn height - bounding box correction will adjust
-NUM_OF_MODULES = 30
-TARGET_POSITION = [5, 0, 0.5]
+# NUM_OF_MODULES = 30
+TARGET_POSITION = [0, 5, 0.5]
 
 
 def create_individual(con_twisty: bool) -> Individual:
     ind = Individual()
-    num_modules = 4
+    num_modules = 20
 
     # "Type" probability space - bias towards HINGE modules for functional robots
     type_probability_space = RNG.random(
@@ -399,7 +398,7 @@ def evolve_generation(population: list[Individual],
             
             # Apply mutation to crossover offspring (optional but recommended)
             if RNG.random() < mutation_rate:
-                child = mutate_individual(child, mutation_rate * 0.5)  # Lower mutation rate for crossover offspring
+                child = mutate_individual(child, mutation_rate)  # Lower mutation rate for crossover offspring
         else:
             # Mutation only: select one parent and mutate
             parent = tournament_selection(population)
@@ -420,25 +419,24 @@ def run_for_fitness(robot: CoreModule, individual: Individual) -> float:
     for i in range(len(robot.spec.geoms)):
         robot.spec.geoms[i].rgba[-1] = 0.5
     
-    world.spawn(robot.spec, spawn_position=SPAWN_POS, correct_for_bounding_box=False)
+    world.spawn(robot.spec, position=SPAWN_POS)
     model = world.spec.compile()
     data = mujoco.MjData(model)
     mujoco.mj_resetData(model, data)
     
+    # Number of actuators and DoFs
+    console.log(f"DoF (model.nv): {model.nv}, Actuators (model.nu): {model.nu}")
+    
     # Create CPG controller
-    weight_matrix = RNG.uniform(-0.1, 0.1, size=(model.nu, model.nu))
-    cpg = CPGSensoryFeedback(
-        num_neurons=int(model.nu),
-        sensory_term=-0.0,
-        _lambda=0.01,
-        coupling_weights=weight_matrix,
-    )
+    adj_dict = create_fully_connected_adjacency(model.nu)
+    cpg = NaCPG(adj_dict, angle_tracking=True)
     cpg.reset()
-    individual.brain_genotype = cpg.c
+    gen = cpg.get_flat_params()
+    individual.brain_genotype = gen
     mujoco.set_mjcb_control(lambda m, d: policy(m, d, cpg=cpg))
     
     # Run simulation for target-seeking fitness
-    simulation_time = 30.0  # seconds
+    simulation_time = 15.0  # seconds
     steps = int(simulation_time / model.opt.timestep)
     individual.time_alive = 0
     
@@ -844,7 +842,7 @@ def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None:
         robot.spec.geoms[i].rgba[-1] = 0.5
 
     # Spawn the robot at the world
-    world.spawn(robot.spec, spawn_position=SPAWN_POS, correct_for_bounding_box=False) #read as champion_robot.spec. it's just being accessed through the parameter name robot.
+    world.spawn(robot.spec, position=SPAWN_POS) #read as champion_robot.spec. it's just being accessed through the parameter name robot.
 
     # Compile the model
     model = world.spec.compile()
@@ -852,27 +850,23 @@ def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None:
 
     # Reset state and time of simulation
     mujoco.mj_resetData(model, data)
+    
+    # Number of actuators and DoFs
+    console.log(f"DoF (model.nv): {model.nv}, Actuators (model.nu): {model.nu}")
 
     # Save the model to XML
     xml = world.spec.to_xml()
     with (DATA / f"{SCRIPT_NAME}.xml").open("w", encoding="utf-8") as f:
         f.write(xml)
 
-    # Number of actuators and DoFs
-    console.log(f"DoF (model.nv): {model.nv}, Actuators (model.nu): {model.nu}")
-
     # Actuators and CPG
     mujoco.set_mjcb_control(None)
-    weight_matrix = RNG.uniform(-0.1, 0.1, size=(model.nu, model.nu))
-    cpg = CPGSensoryFeedback(
-        num_neurons=int(model.nu),
-        sensory_term=-0.0,
-        _lambda=0.01,
-        coupling_weights=weight_matrix,
-    )
+    adj_dict = create_fully_connected_adjacency(model.nu)
+    cpg = NaCPG(adj_dict, angle_tracking=True)
     cpg.reset()
+    gen = cpg.get_flat_params()
     # add brain genotype to the individual
-    individual.brain_genotype = cpg.c
+    individual.brain_genotype = gen
 
     # Initialize robot tracker
     mujoco_type_to_find = mujoco.mjtObj.mjOBJ_GEOM
@@ -883,23 +877,23 @@ def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None:
     )
     tracker.setup(world.spec, data)
 
-    # Initialize controller
-    ctrl = Controller(
-        controller_callback_function=policy,
-        time_steps_per_ctrl_step=1,
-        tracker=tracker,
-    )
+    # # Initialize controller
+    # ctrl = Controller(
+    #     controller_callback_function=policy,
+    #     time_steps_per_ctrl_step=1,
+    #     tracker=tracker,
+    # )
 
-    mujoco.set_mjcb_control(lambda m, d: ctrl.set_control(m, d, cpg))
+    # mujoco.set_mjcb_control(lambda m, d: ctrl.set_control(m, d, cpg))
 
-    # Initialize robot tracker
-    mujoco_type_to_find = mujoco.mjtObj.mjOBJ_GEOM
-    name_to_bind = "core"
-    tracker = Tracker(
-        mujoco_obj_to_find=mujoco_type_to_find,
-        name_to_bind=name_to_bind,
-    )
-    tracker.setup(world.spec, data)
+    # # Initialize robot tracker
+    # mujoco_type_to_find = mujoco.mjtObj.mjOBJ_GEOM
+    # name_to_bind = "core"
+    # tracker = Tracker(
+    #     mujoco_obj_to_find=mujoco_type_to_find,
+    #     name_to_bind=name_to_bind,
+    # )
+    # tracker.setup(world.spec, data)
 
     # Initialize controller
     ctrl = Controller(
@@ -957,13 +951,17 @@ def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None:
 def policy(
     model: mujoco.MjModel,  # noqa: ARG001
     data: mujoco.MjData,
-    cpg: CPGSensoryFeedback,
+    cpg: NaCPG,
 ) -> np.ndarray:
     """Use feedback term to shift the output of the CPGs and return control array."""
-    x, _ = cpg.step()
-    ctrl_values = x * np.pi / 2
-    data.ctrl = ctrl_values
-    return ctrl_values
+    angles = cpg.forward()
+    # ctrl_values = angles
+    # data.ctrl = ctrl_values
+    
+    #--------------------------
+    # data.ctrl = cpg.forward()
+    #--------------------------
+    return angles
 
 
 if __name__ == "__main__":
