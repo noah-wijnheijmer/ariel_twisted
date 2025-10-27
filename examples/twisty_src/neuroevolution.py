@@ -33,7 +33,7 @@ from ariel.ec.a001 import Individual, JSONIterable
 from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
 from ariel.utils.tracker import Tracker
 from ariel.simulation.controllers.controller import Controller
-from twisty_brain import RobotBrain
+from twisty_src.twisty_brain import RobotBrain
 from ariel.utils.renderers import video_renderer
 from ariel.utils.video_recorder import VideoRecorder
 from ariel.utils.runners import simple_runner
@@ -61,7 +61,8 @@ class NeuroEvolution:
         nn_hidden_layers: list[int]
         starting_pos: list[float]
         is_maximisation: bool
-        num_of_generations: int
+        # num_of_generations: int
+        max_evals: int
         population_size: int
         mutation_rate: float
         mutation_scale: float
@@ -75,7 +76,8 @@ class NeuroEvolution:
             nn_hidden_layers: list[int],
             starting_pos: list[float],
             is_maximisation: bool,
-            num_of_generations: int,
+            # num_of_generations: int,
+            max_evals: int,
             population_size: int,
             mutation_rate: float,
             mutation_scale: float,
@@ -91,7 +93,8 @@ class NeuroEvolution:
             nn_hidden_layers=nn_hidden_layers,
             starting_pos=starting_pos,
             is_maximisation=is_maximisation,
-            num_of_generations=num_of_generations,
+            # num_of_generations=num_of_generations,
+            max_evals=max_evals,
             population_size=population_size,
             mutation_rate=mutation_rate,
             mutation_scale=mutation_scale,
@@ -115,29 +118,24 @@ class NeuroEvolution:
         ind.id = self.id_counter
         self.id_counter += 1
         ind.genotype = new_brain.get_weights_as_vector().tolist()
-        ind.tags = {"mut": False}
+        ind.tags = {"ps": False, "mut": False}
+        ind.requires_eval = True
         return ind
 
     def tournament_parent_selection(self, population: Population) -> Population:
         selected_indices = random.sample(range(len(population)), min(self.config.tournament_size, len(population)))
         tournament = [{"index": i, "individual": population[i]} for i in selected_indices]
         tournament = sorted(tournament, key=lambda ind: ind["individual"].fitness, reverse=self.config.is_maximisation)
-        winners = tournament[:2]
-        parent_indexes = [w["index"] for w in winners]
-
-        for ind in population:
-            if ind.id in parent_indexes:
-                ind.tags = {"ps": True}
-            else:
-                ind.tags = {"ps": False}
-
+        winning_index = [winner["index"] for winner in tournament[:2]]
+        for idx in winning_index:
+            population[idx].tags["ps"] = True
         return population
 
     def crossover(self, population: Population) -> Population:
-        parents = [ind for ind in population if ind.tags.get("ps", False)]
-        for idx in range(0, len(parents), 2):
+        parents = [ind for ind in population if ind.tags.get("ps", True)]
+        for idx in range(0, len(parents) - 1, 2):
             parent_i = parents[idx]
-            parent_j = parents[idx]
+            parent_j = parents[idx + 1]
             genotype_i, genotype_j = Crossover.one_point(
                 cast("list[int]", parent_i.genotype),
                 cast("list[int]", parent_j.genotype),
@@ -148,7 +146,7 @@ class NeuroEvolution:
             child_i.id = self.id_counter
             self.id_counter += 1
             child_i.genotype = genotype_i
-            child_i.tags = {"mut": True}
+            child_i.tags = {"ps": False, "mut": True}
             child_i.requires_eval = True
 
             # Second child
@@ -156,7 +154,7 @@ class NeuroEvolution:
             child_j.id = self.id_counter
             self.id_counter += 1
             child_j.genotype = genotype_j
-            child_j.tags = {"mut": True}
+            child_j.tags = {"ps": False, "mut": True}
             child_j.requires_eval = True
 
             population.extend([child_i, child_j])
@@ -165,25 +163,19 @@ class NeuroEvolution:
     def mutation(self, population: Population) -> Population:
         """
             Normal creep mutation -> add small gaussian noise to some genes.
+            Mark requires_eval True only if at least one gene was changed.
         """
         for ind in population:
-            if ind.tags.get("mut", False):
-                if np.random.random() > self.config.mutation_rate:
-                    continue
-                mutated = cast("list[int]", ind.genotype)
-                for gene in mutated:
-                    if np.random.random() > self.config.mutation_magnitude:
-                        continue
-                    gene += np.random.normal(loc=0.0, scale=self.config.mutation_scale)
-
-                ind.genotype = mutated
-                ind.requires_eval = True
-                ind.tags = {"mut": True}
-        return population
-
-    def reset_population_tags(self, population: Population) -> Population:
-        for ind in population:
-            ind.tags = {"mut": False}
+            if not ind.tags["mut"] and random.random() < self.config.mutation_rate:
+                mutated = False
+                for i in range(len(ind.genotype)):
+                    if random.random() < self.config.mutation_magnitude:
+                        ind.genotype[i] += float(np.random.normal(loc=0.0, scale=self.config.mutation_scale))
+                        mutated = True
+                if mutated:
+                    ind.requires_eval = True
+                    ind.tags["mut"] = True
+        
         return population
 
     def evaluate(self,
@@ -193,10 +185,11 @@ class NeuroEvolution:
                 nn_output_size: int,
                 use_gecko: bool=False,
                 verbose: bool=False,
-    ) -> Population:
-        
+    ) -> tuple[Population, int]:
+        eval_count = 0
         for ind in brain_pop:
             if ind.requires_eval:
+                eval_count += 1
                 history = self.run(original_ind, ind, nn_input_size, nn_output_size, use_gecko=use_gecko)
                 ind.fitness = self.fitness_function(self.config.starting_pos, history)
                 ind.requires_eval = False
@@ -206,26 +199,30 @@ class NeuroEvolution:
                     else:
                         console.log(f"Evaluated robot {original_ind.id} using brain {ind.id} with fitness: {ind.fitness}")
 
-        return brain_pop
+        return brain_pop, eval_count
 
-    def survivor_selection(self, population: Population) -> Population:
+    def survivor_selection(self, population: Population, dead_population: Population) -> tuple[Population, Population]:
         random.shuffle(population)
         current_pop_size = len(population)
-        for idx in range(len(population)):
-            ind_i = population[idx]
-            ind_j = population[idx + 1]
+        while current_pop_size > self.config.population_size:
+            idx = random.randint(0, current_pop_size - 2)
+
+            sorted_inds = sorted([(idx, population[idx]), (idx + 1, population[idx + 1])], key=lambda ind: ind[1].fitness, reverse=self.config.is_maximisation)
 
             # Kill worse individual
-            if ind_i.fitness > ind_j.fitness and self.config.is_maximisation:
-                ind_j.alive = False
-            else:
-                ind_i.alive = False
+            worse_idx = sorted_inds[1][0]
+            population[worse_idx].alive = False
 
-            # Termination condition
+            dead_population.append(population[worse_idx])
+            population.pop(worse_idx)
             current_pop_size -= 1
-            if current_pop_size <= self.config.population_size:
-                break
 
+        return population, dead_population
+
+    def reset_population_tags(self, population: Population) -> Population:
+        for ind in population:
+            ind.tags["ps"] = False
+            ind.tags["mut"] = False
         return population
 
     def run(
@@ -263,7 +260,9 @@ class NeuroEvolution:
             robot.spec.geoms[i].rgba[-1] = 0.5
 
         # Spawn the robot at the world
-        world.spawn(robot.spec, spawn_position=self.config.starting_pos, correct_for_bounding_box=True)
+        starting_pos = self.config.starting_pos.copy()
+        # console.log(f"[bold yellow]Spawning robot at {starting_pos}")
+        world.spawn(robot.spec, spawn_position=starting_pos, correct_for_bounding_box=True)
 
         # Compile the model
         model = world.spec.compile()
@@ -365,28 +364,41 @@ class NeuroEvolution:
         # Create initial population
         brain_population = [self.create_individual(nn_input_size, nn_output_size, self.config.nn_hidden_layers) 
                             for _ in range(self.config.population_size)]
-        brain_population = self.evaluate(original_ind, brain_population, nn_input_size, nn_output_size, use_gecko=use_gecko, verbose=False)
-        previous_best_brain = sorted(brain_population, key=lambda ind: ind.fitness, reverse=self.config.is_maximisation)[0]
-        # self.run(original_ind, previous_best_brain, nn_input_size, nn_output_size, mode="video", use_gecko=use_gecko)
-        
-        console.log(f"Initial best brain fitness: {previous_best_brain.fitness}")
-        console.log(f"Neuroevolution will run for {self.config.num_of_generations} generations.")
+        brain_population, num_evaluations = self.evaluate(original_ind, brain_population, nn_input_size, nn_output_size, use_gecko=use_gecko, verbose=False)
+        best_init = sorted(brain_population, key=lambda ind: ind.fitness, reverse=self.config.is_maximisation)[0]
+        self.run(original_ind, best_init, nn_input_size, nn_output_size, mode="video", use_gecko=use_gecko) # save initial best brain video
 
-        for i in range(self.config.num_of_generations):
+        console.log(f"Initial best brain fitness: {best_init.fitness}")
+        console.log(f"Neuroevolution will run {self.config.max_evals} evaluations.")
+
+        i = 0
+        dead_population = []
+        while num_evaluations < self.config.max_evals:
             brain_population = self.tournament_parent_selection(brain_population)
             brain_population = self.crossover(brain_population)
             brain_population = self.mutation(brain_population)
-            brain_population = self.evaluate(original_ind, brain_population, nn_input_size, nn_output_size, use_gecko=use_gecko, verbose=False)
-            brain_population = self.survivor_selection(brain_population)
+            brain_population, current_evals = self.evaluate(original_ind, brain_population, nn_input_size, nn_output_size, use_gecko=use_gecko, verbose=False)
+            brain_population, dead_population = self.survivor_selection(brain_population, dead_population)
             brain_population = self.reset_population_tags(brain_population)
 
             # Save video of the best brain in the generation
-            best_brain_in_gen = sorted(brain_population, key=lambda ind: ind.fitness, reverse=self.config.is_maximisation)[0]
-            if i % 100 == 0: # and best_brain_in_gen.fitness > previous_best_brain.fitness:
+            best_brain_in_gen = brain_population[0]
+            for ind in brain_population:
+                if self.config.is_maximisation:
+                    if ind.fitness > best_brain_in_gen.fitness:
+                        best_brain_in_gen = ind
+                else:
+                    if ind.fitness < best_brain_in_gen.fitness:
+                        best_brain_in_gen = ind
+
+            if num_evaluations % (self.config.max_evals / 5) > (num_evaluations + current_evals) % (self.config.max_evals / 5): # 5 checkpoints
                 self.run(original_ind, best_brain_in_gen, nn_input_size, nn_output_size, mode="video", use_gecko=use_gecko)
             
             if verbose:
-                console.log(f"Generation {i+1}/{self.config.num_of_generations} completed.\t Fitness of best brain: {best_brain_in_gen.fitness}")
+                console.log(f"Generation {i+1} completed.\tcurrent evaluations: {num_evaluations} out of {self.config.max_evals}\t Fitness of best brain: {best_brain_in_gen.fitness}")
+
+            num_evaluations += current_evals
+            i += 1
 
         best_brain = sorted(brain_population, key=lambda ind: ind.fitness, reverse=self.config.is_maximisation)[0]
 
@@ -401,29 +413,3 @@ class NeuroEvolution:
     def get_hyperparameters(self) -> dict[Any, Any]:
         """Returns the hyperparameters used in the neuroevolution process."""
         return self.config.__dict__
-        
-# Example usage
-
-if __name__ == "__main__":
-    def fitness_function_basic(starting_pos: list[float], history: list[float]) -> float:
-        xs, _, _ = starting_pos
-        xe, _, _ = history[-1]
-
-        # maximize the distance
-        x_distance = xe - xs
-        return x_distance
-
-    ne = NeuroEvolution(
-            fitness_function=fitness_function_basic,
-            nn_hidden_layers=[64, 32],
-            population_size=20,
-            num_of_generations=500,
-            mutation_rate=0.1,
-            mutation_magnitude=0.05,
-            mutation_scale=0.5,
-            starting_pos=[0, 0, 0],
-            is_maximisation=True,
-            tournament_size=3,
-        )
-
-    ne.evolve(None, use_gecko=True, verbose=True)

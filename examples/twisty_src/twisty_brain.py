@@ -58,14 +58,14 @@ class RobotBrain(nn.Module):
         self.network = nn.Sequential(*layers)
         
         # Initialize weights with small values
-        self._initialize_weights()
+    #     self._initialize_weights()
     
-    def _initialize_weights(self) -> None:
-        """Initialize network weights with small random values."""
-        for layer in self.network:
-            if isinstance(layer, nn.Linear):
-                nn.init.xavier_normal_(layer.weight, gain=0.5)
-                nn.init.zeros_(layer.bias)
+    # def _initialize_weights(self) -> None:
+    #     """Initialize network weights with small random values."""
+    #     for layer in self.network:
+    #         if isinstance(layer, nn.Linear):
+    #             nn.init.xavier_normal_(layer.weight, gain=0.5)
+    #             nn.init.zeros_(layer.bias)
     
     def forward_control(self,
                         model: mujoco.MjModel,
