@@ -395,15 +395,12 @@ class NeuroEvolution:
                 self.run(original_ind, best_brain_in_gen, nn_input_size, nn_output_size, mode="video", use_gecko=use_gecko)
             
             if verbose:
-                console.log(f"Generation {i+1} completed.\tcurrent evaluations: {num_evaluations} out of {self.config.max_evals}\t Fitness of best brain: {best_brain_in_gen.fitness}")
+                console.log(f"Generation {i+1} completed.\t{num_evaluations}/{self.config.max_evals} evaluations\nbest: {best_brain_in_gen.fitness}\t mean: {np.mean([ind.fitness for ind in brain_population])}\n")
 
             num_evaluations += current_evals
             i += 1
 
         best_brain = sorted(brain_population, key=lambda ind: ind.fitness, reverse=self.config.is_maximisation)[0]
-
-        # Save best brain video
-        self.run(original_ind, best_brain, nn_input_size, nn_output_size, mode="video", use_gecko=use_gecko)
 
         # Run best brain in launcher
         self.run(original_ind, best_brain, nn_input_size, nn_output_size, mode="launcher", use_gecko=use_gecko)

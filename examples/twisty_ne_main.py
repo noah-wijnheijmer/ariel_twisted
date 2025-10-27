@@ -88,12 +88,14 @@ class EASettings(BaseSettings):
 config = EASettings()
 
 def fitness_function_basic(starting_pos, history: list[float]) -> float:
-    xs, _, _ = starting_pos
-    xe, _, _ = history[-1]
+    # move forward, direction got trail and errored
+    
+    _, ys, _ = starting_pos
+    _, ye, _ = history[-1]
 
     # maximize the distance
-    x_distance = xs - xe
-    return x_distance
+    y_distance = ys - ye # negative y distance = forward movement
+    return y_distance
 
 def create_gecko_individual() -> Individual:
     ind = Individual()
