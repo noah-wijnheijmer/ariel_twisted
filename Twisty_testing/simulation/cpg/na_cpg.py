@@ -377,7 +377,7 @@ class NaCPG(nn.Module):
         self.b.data = loaded["b"]
         console.log(f"[green]Loaded parameters from {path}[/green]")
 
-def policy(
+def na_policy(
     model: mujoco.MjModel,  # noqa: ARG001
     data: mujoco.MjData,
     cpg: NaCPG,

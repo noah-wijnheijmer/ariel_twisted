@@ -4,13 +4,13 @@ from rich.console import Console
 import numpy as np
 from typing import Any
 from simulation.environments._simple_flat import SimpleFlatWorld
-from simulation.cpg.na_cpg import (
-    NaCPG, create_fully_connected_adjacency, policy
-)
+from simulation.cpg.sf_cpg import CPGSensoryFeedback, sf_policy
 
 console = Console()
+SEED = 40
+RNG = np.random.default_rng(SEED)
 
-def run_for_fitness(robot: CoreModule, individual: Any, spawn_pos: list[float], target_pos: list[float]) -> Any:
+def sf_for_fitness(robot: CoreModule, individual: Any, spawn_pos: list[float], target_pos: list[float]) -> Any:
     """Modified run function that returns fitness based on distance to target."""
     
     # Setup (same as existing run())
@@ -29,12 +29,16 @@ def run_for_fitness(robot: CoreModule, individual: Any, spawn_pos: list[float], 
     console.log(f"DoF (model.nv): {model.nv}, Actuators (model.nu): {model.nu}")
     
     # Create CPG controller
-    adj_dict = create_fully_connected_adjacency(model.nu)
-    cpg = NaCPG(adj_dict, angle_tracking=True)
+    weight_matrix = RNG.uniform(-0.1, 0.1, size=(model.nu, model.nu))
+    cpg = CPGSensoryFeedback(
+        num_neurons=int(model.nu),
+        sensory_term=-0.0,
+        _lambda=0.01,
+        coupling_weights=weight_matrix,
+    )
     cpg.reset()
-    gen = cpg.get_flat_params()
-    individual.brain_genotype = gen
-    mujoco.set_mjcb_control(lambda m, d: policy(m, d, cpg=cpg))
+    individual.brain_genotype = cpg.c
+    mujoco.set_mjcb_control(lambda m, d: sf_policy(m, d, cpg=cpg))
     
     # Run simulation for target-seeking fitness
     simulation_time = 15.0  # seconds

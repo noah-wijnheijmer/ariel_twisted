@@ -13,7 +13,8 @@ from robot_body.body_config import (
 )
 from robot_body.hi_prob_decoding import HighProbabilityDecoder
 from robot_body.constructor import construct_mjspec_from_graph
-from ea_components.evaluation import run_for_fitness
+from ea_components.evaluation.na_evaluation import na_for_fitness
+from ea_components.evaluation.sf_evaluation import sf_for_fitness
 # Global constants
 SEED = 40
 RNG = np.random.default_rng(SEED)
@@ -185,14 +186,17 @@ def create_individual_from_matrices(
     
     return ind
 
-def evaluate_population(population: list[Individual], spawn_pos: list[float], target_pos: list[float]) -> None:
+def evaluate_population(population: list[Individual], spawn_pos: list[float], target_pos: list[float], brain_type: str) -> None:
     """Evaluate fitness for all individuals in population."""
     for individual in population:
         try:
             robot = construct_mjspec_from_graph(individual.graph)
-            fitness = run_for_fitness(robot, individual, spawn_pos, target_pos)
-            individual.fitness = fitness
-            console.log(f"Individual (twisty={individual.twisty}) fitness: {fitness:.3f}")
+            if brain_type == "na_cpg":
+                fitness = na_for_fitness(robot, individual, spawn_pos, target_pos)
+            elif brain_type == "sf_cpg":
+                fitness = sf_for_fitness(robot, individual, spawn_pos, target_pos)
+            individual.fitness = fitness # type: ignore
+            console.log(f"Individual (twisty={individual.twisty}) fitness: {fitness:.3f}") # type: ignore
         except Exception as e:
             console.log(f"Error evaluating individual: {e}")
             individual.fitness = 0.0
