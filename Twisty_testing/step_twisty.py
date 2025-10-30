@@ -19,8 +19,8 @@ DATA_SETTINGS = [DATA, SCRIPT_NAME]
 SEED = 40
 RNG = np.random.default_rng(SEED)
 EVOLUTION_CONFIG = {
-    "generations": 5,
-    "population_size": 20,
+    "generations": 10,
+    "population_size": 8,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
     "checkpoint_every": 1,  # Save checkpoint every N generations
