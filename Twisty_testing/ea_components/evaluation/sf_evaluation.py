@@ -20,7 +20,7 @@ def sf_for_fitness(robot: CoreModule, individual: Any, spawn_pos: list[float], t
     for i in range(len(robot.spec.geoms)):
         robot.spec.geoms[i].rgba[-1] = 0.5
     
-    world.spawn(robot.spec, position=spawn_pos)
+    world.spawn(robot.spec, spawn_position=spawn_pos)
     model = world.spec.compile()
     data = mujoco.MjData(model)
     mujoco.mj_resetData(model, data)
@@ -44,19 +44,29 @@ def sf_for_fitness(robot: CoreModule, individual: Any, spawn_pos: list[float], t
     simulation_time = 15.0  # seconds
     steps = int(simulation_time / model.opt.timestep)
     individual.time_alive = 0
-    
+    fitness = 0
+    # Run simulation for fitness (no video)
+    simulation_time = 30.0  # seconds
+    step_one_sec = int(1/model.opt.timestep)
+    steps = int(simulation_time / model.opt.timestep)
     for step in range(steps):
-        individual.time_alive = step / (1/model.opt.timestep)
+        individual.time_alive = step/step_one_sec
         mujoco.mj_step(model, data)
     
     # Calculate fitness based on final distance to target
-    final_position = data.xpos[1][:2].copy()  # x, y coordinates only
+    final_position = data.xpos[1][:2].copy()  # x, y coordinates only     
     target_position = np.array([target_pos[0], target_pos[1]])  # x, y from target
-    
-    # Distance to target (lower is better)
     distance_to_target = np.linalg.norm(final_position - target_position)
-    
-    # Simple inverse distance fitness (higher fitness = closer to target)
     fitness = 1.0 / (1.0 + distance_to_target)
-    
     return fitness
+"""
+    # target_position = np.array([target_pos[0], target_pos[1]])  # x, y from target
+    # print(final_position)
+    # # Distance to target (lower is better)
+    # distance_to_target = np.linalg.norm(final_position - target_position)
+    
+    # # Simple inverse distance fitness (higher fitness = closer to target)
+    # # fitness = 1.0 / (1.0 + distance_to_target)
+    
+    # return distance_to_target
+"""

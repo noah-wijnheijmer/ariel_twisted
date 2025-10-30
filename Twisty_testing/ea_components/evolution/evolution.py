@@ -22,8 +22,11 @@ def evolve_generation(population: list[Individual],
         New evolved population
     """
     # Sort by fitness for elitism
+    fitnesses = []
     population.sort(key=lambda ind: ind.fitness, reverse=True)
-    
+    for ind in population:
+        fitnesses.append(ind.fitness)
+    print(max(fitnesses))
     # Next generation
     new_population = []
     
@@ -47,5 +50,5 @@ def evolve_generation(population: list[Individual],
             child = mutate_individual(parent, mutation_rate)
         
         new_population.append(child)
-    
+    fitnesses = []
     return new_population

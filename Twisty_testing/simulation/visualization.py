@@ -33,7 +33,7 @@ def visualize_champ(robot: CoreModule, individual: Individual, spawn_pos: list[f
         robot.spec.geoms[i].rgba[-1] = 0.5
 
     # Spawn the robot at the world
-    world.spawn(robot.spec, position=spawn_pos) #read as champion_robot.spec. it's just being accessed through the parameter name robot.
+    world.spawn(robot.spec, spawn_position=spawn_pos) #read as champion_robot.spec. it's just being accessed through the parameter name robot.
 
     # Compile the model
     model = world.spec.compile()
