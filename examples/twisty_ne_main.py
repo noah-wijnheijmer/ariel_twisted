@@ -28,6 +28,7 @@ from pathlib import Path
 # Third-party libraries
 import numpy as np
 from rich.console import Console
+import math
 
 # Local libraries
 # from ariel.body_phenotypes.robogen_lite.config import (NUM_OF_FACES,
@@ -94,7 +95,7 @@ def fitness_function_basic(starting_pos, history: list[float]) -> float:
     _, ye, _ = history[-1]
 
     # maximize the distance
-    y_distance = ys - ye # negative y distance = forward movement
+    y_distance = np.abs(ys - ye) # negative y distance = forward movement
     return y_distance
 
 def create_gecko_individual() -> Individual:
