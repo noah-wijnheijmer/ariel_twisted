@@ -33,7 +33,7 @@ def visualize_champ(robot: CoreModule, individual: Individual, spawn_pos: list[f
         robot.spec.geoms[i].rgba[-1] = 0.5
 
     # Spawn the robot at the world
-    world.spawn(robot.spec, spawn_position=spawn_pos) #read as champion_robot.spec. it's just being accessed through the parameter name robot.
+    world.spawn(robot.spec, spawn_position=spawn_pos, correct_for_bounding_box=False) #read as champion_robot.spec. it's just being accessed through the parameter name robot.
 
     # Compile the model
     model = world.spec.compile()
@@ -75,7 +75,7 @@ def visualize_champ(robot: CoreModule, individual: Individual, spawn_pos: list[f
             tracker=tracker,
         )
     elif brain_type == "sf_cpg":
-        weight_matrix = RNG.uniform(-0.1, 0.1, size=(model.nu, model.nu))
+        weight_matrix = individual.brain_genotype
         cpg = CPGSensoryFeedback(
             num_neurons=int(model.nu),
             sensory_term=-0.0,
@@ -84,7 +84,7 @@ def visualize_champ(robot: CoreModule, individual: Individual, spawn_pos: list[f
         )
         cpg.reset()
         # add brain genotype to the individual
-        individual.brain_genotype = cpg.c
+        # individual.brain_genotype = cpg.c
 
         # Initialize robot tracker
         mujoco_type_to_find = mujoco.mjtObj.mjOBJ_GEOM

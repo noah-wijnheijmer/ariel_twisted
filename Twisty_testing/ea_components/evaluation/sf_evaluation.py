@@ -23,7 +23,7 @@ def sf_for_fitness(robot: CoreModule, individual: Any, spawn_pos: list[float], t
         for i in range(len(robot.spec.geoms)):
             robot.spec.geoms[i].rgba[-1] = 0.5
     
-        world.spawn(robot.spec, spawn_position=spawn_pos)
+        world.spawn(robot.spec, spawn_position=spawn_pos, correct_for_bounding_box=False)
         model = world.spec.compile()
         data = mujoco.MjData(model)
         mujoco.mj_resetData(model, data)

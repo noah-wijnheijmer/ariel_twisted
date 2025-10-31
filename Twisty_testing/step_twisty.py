@@ -19,14 +19,14 @@ DATA_SETTINGS = [DATA, SCRIPT_NAME]
 SEED = 40
 RNG = np.random.default_rng(SEED)
 EVOLUTION_CONFIG = {
-    "generations": 10,
-    "population_size": 8,
+    "generations": 4,
+    "population_size": 20,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
     "checkpoint_every": 1,  # Save checkpoint every N generations
     "auto_resume": True,    # Automatically resume from checkpoint if found
 }
-EVAL_CONFIG = {"spawn_pos": [0, 0, 0], "target_pos": [0, 5, 0.5], "brain_type": "sf_cpg"}
+EVAL_CONFIG = {"spawn_pos": [0, 0, 0.39], "target_pos": [0, 5, 0.5], "brain_type": "sf_cpg"}
 
 def run_evolution_experiment(
     generations: int = EVOLUTION_CONFIG['generations'],
