@@ -70,12 +70,6 @@ from ariel.utils.runners import simple_runner
 # from evotorch.neuroevolution import NEProblem
 # from evotorch.algorithms import PGPE
 # from evotorch.logging import PandasLogger
-from ariel.utils.tracker import Tracker
-from ariel.utils.runners import simple_runner
-# from twisty_brain import RobotBrain
-# from evotorch.neuroevolution import NEProblem
-# from evotorch.algorithms import PGPE
-# from evotorch.logging import PandasLogger
 from ariel.ec.a000 import IntegerMutator
 from networkx import DiGraph
 
@@ -164,9 +158,9 @@ def create_individual(con_twisty: bool) -> Individual:
 
 
 def create_individual_from_matrices(
-    type_probs: np.ndarray, 
-    conn_probs: np.ndarray, 
-    rotation_probs: np.ndarray, 
+    type_probs: np.ndarray[Any, Any], 
+    conn_probs: np.ndarray[Any, Any], 
+    rotation_probs: np.ndarray[Any, Any], 
     twisty: bool
 ) -> Individual:
     """Create individual from probability matrices."""
@@ -331,8 +325,8 @@ def crossover_individuals(
 
 
 def _blend_crossover_matrix(
-    matrix1: np.ndarray, matrix2: np.ndarray, alpha: float,
-) -> np.ndarray:
+    matrix1: np.ndarray[Any, Any], matrix2: np.ndarray[Any, Any], alpha: float,
+) -> np.ndarray[Any, Any]:
     """Apply Blend Crossover (BLX-alpha) to two matrices element-wise.
     
     For each gene pair (x1, x2), creates offspring value in interval:

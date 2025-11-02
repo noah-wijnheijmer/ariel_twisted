@@ -10,7 +10,7 @@ from simulation.cpg.na_cpg import (
 
 console = Console()
 
-def na_for_fitness(robot: CoreModule, individual: Any, spawn_pos: list[float], target_pos: list[float]) -> Any:
+def na_for_fitness(robot: CoreModule, individual: Any, custom_spawn_pos: bool, spawn_pos: list[float], target_pos: list[float]) -> Any:
     """Modified run function that returns fitness based on distance to target."""
     
     # Setup (same as existing run())
@@ -20,7 +20,7 @@ def na_for_fitness(robot: CoreModule, individual: Any, spawn_pos: list[float], t
     for i in range(len(robot.spec.geoms)):
         robot.spec.geoms[i].rgba[-1] = 0.5
     
-    world.spawn(robot.spec, position=spawn_pos)
+    world.spawn(robot.spec, spawn_position=spawn_pos, correct_for_bounding_box=custom_spawn_pos)
     model = world.spec.compile()
     data = mujoco.MjData(model)
     mujoco.mj_resetData(model, data)

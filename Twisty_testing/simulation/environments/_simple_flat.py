@@ -129,12 +129,10 @@ class SimpleFlatWorld:
             If True, the spawn position will be adjusted to account for the robot's bounding box,
             by default True
         """
-        # Default spawn position
-        if spawn_position is None:
-            spawn_position = [0, 0, 0]
 
         # If correct_for_bounding_box is True, adjust the spawn position
-        if correct_for_bounding_box:
+        if correct_for_bounding_box or spawn_position is None:
+            spawn_position = [0, 0, 0]
             model = mj_spec.compile()
             data = mujoco.MjData(model)
             mujoco.mj_step(model, data, nstep=10)
@@ -143,7 +141,6 @@ class SimpleFlatWorld:
 
         # If small_gap is True, add a small gap to the spawn position
         spawn_position[2] += small_gap
-
         spawn_site = self.spec.worldbody.add_site(
             pos=np.array(spawn_position),
         )

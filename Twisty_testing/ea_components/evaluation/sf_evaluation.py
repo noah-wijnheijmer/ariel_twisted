@@ -10,7 +10,7 @@ console = Console()
 SEED = 40
 RNG = np.random.default_rng(SEED)
 
-def sf_for_fitness(robot: CoreModule, individual: Any, spawn_pos: list[float], target_pos: list[float]) -> Any:
+def sf_for_fitness(robot: CoreModule, individual: Any, custom_spawn_pos: bool, spawn_pos: list[float], target_pos: list[float]) -> Any:
     """Modified run function that returns fitness based on distance to target."""
     try:
         if individual.fitness is not None:
@@ -23,7 +23,7 @@ def sf_for_fitness(robot: CoreModule, individual: Any, spawn_pos: list[float], t
         for i in range(len(robot.spec.geoms)):
             robot.spec.geoms[i].rgba[-1] = 0.5
     
-        world.spawn(robot.spec, spawn_position=spawn_pos, correct_for_bounding_box=False)
+        world.spawn(robot.spec, spawn_position=spawn_pos, correct_for_bounding_box=custom_spawn_pos)
         model = world.spec.compile()
         data = mujoco.MjData(model)
         mujoco.mj_resetData(model, data)

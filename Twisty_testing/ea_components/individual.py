@@ -186,15 +186,15 @@ def create_individual_from_matrices(
     
     return ind
 
-def evaluate_population(population: list[Individual], spawn_pos: list[float], target_pos: list[float], brain_type: str) -> None:
+def evaluate_population(population: list[Individual], custom_spawn_pos: bool, spawn_pos: list[float], target_pos: list[float], brain_type: str) -> None:
     """Evaluate fitness for all individuals in population."""
     for individual in population:
         try:
             robot = construct_mjspec_from_graph(individual.graph)
             if brain_type == "na_cpg":
-                fitness = na_for_fitness(robot, individual, spawn_pos, target_pos)
+                fitness = na_for_fitness(robot, individual, custom_spawn_pos,spawn_pos, target_pos)
             elif brain_type == "sf_cpg":
-                fitness = sf_for_fitness(robot, individual, spawn_pos, target_pos)
+                fitness = sf_for_fitness(robot, individual, custom_spawn_pos, spawn_pos, target_pos)
             individual.fitness = fitness # type: ignore
             console.log(f"Individual (twisty={individual.twisty}) fitness: {fitness:.3f}") # type: ignore
         except Exception as e:

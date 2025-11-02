@@ -20,7 +20,7 @@ console = Console()
 SEED = 40
 RNG = np.random.default_rng(SEED)
 
-def visualize_champ(robot: CoreModule, individual: Individual, spawn_pos: list[float], path_settings: list[Any], brain_type: str, mode: str = "video") -> None: #Visualizes the champion robot after evolution
+def visualize_champ(robot: CoreModule, individual: Individual, custom_spawn_pos: bool, spawn_pos: list[float], path_settings: list[Any], brain_type: str, mode: str = "video") -> None: #Visualizes the champion robot after evolution
     """Entry point."""
     # BugFix -> "Python exception raised"
     mujoco.set_mjcb_control(None)
@@ -33,7 +33,7 @@ def visualize_champ(robot: CoreModule, individual: Individual, spawn_pos: list[f
         robot.spec.geoms[i].rgba[-1] = 0.5
 
     # Spawn the robot at the world
-    world.spawn(robot.spec, spawn_position=spawn_pos, correct_for_bounding_box=False) #read as champion_robot.spec. it's just being accessed through the parameter name robot.
+    world.spawn(robot.spec, spawn_position=spawn_pos, correct_for_bounding_box=custom_spawn_pos) #read as champion_robot.spec. it's just being accessed through the parameter name robot.
 
     # Compile the model
     model = world.spec.compile()

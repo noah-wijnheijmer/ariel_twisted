@@ -50,7 +50,7 @@ class Controller:
         if (deduced_time_step % self.time_steps_per_ctrl_step) == 0:
             # Save the old control values
             old_ctrl = data.ctrl.copy()
-
+            print(old_ctrl)
             # Execute the custom control function of the user
             output = np.array(
                 self.controller_callback_function(
@@ -60,7 +60,7 @@ class Controller:
                     **kwargs,
                 ),
             )
-
+            print(output)
             # Calculate the new control values
             new_ctrl = (old_ctrl * (1 - self.alpha)) + (output * self.alpha)
 
