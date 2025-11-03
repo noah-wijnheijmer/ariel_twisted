@@ -4,10 +4,11 @@
 import mujoco
 import numpy as np
 import numpy.typing as npt
+from typing import Any
 def compute_geom_bounding_box(
     model: mujoco.MjModel,
     data: mujoco.MjData,
-) -> tuple[npt.NDArray, npt.NDArray]:
+) -> tuple[npt.NDArray[Any], npt.NDArray[Any]]:
     """
     Compute the axis-aligned bounding box (AABB) for all geoms in a MuJoCo model.
 
@@ -109,9 +110,10 @@ class SimpleFlatWorld:
     def spawn(
         self,
         mj_spec: mujoco.MjSpec,
-        spawn_position: list[float, float, float] | None = None,
+        spawn_z: float = 0,
         *,
         small_gap: float = 0.0,
+        spawn_xy: list[float],
         correct_for_bounding_box: bool = True,
     ) -> None:
         """
@@ -129,10 +131,11 @@ class SimpleFlatWorld:
             If True, the spawn position will be adjusted to account for the robot's bounding box,
             by default True
         """
+        spawn_position = [spawn_xy[0], spawn_xy[1], spawn_z]
 
         # If correct_for_bounding_box is True, adjust the spawn position
-        if correct_for_bounding_box or spawn_position is None:
-            spawn_position = [0, 0, 0]
+        if correct_for_bounding_box is True:
+            spawn_position[2] = 0
             model = mj_spec.compile()
             data = mujoco.MjData(model)
             mujoco.mj_step(model, data, nstep=10)

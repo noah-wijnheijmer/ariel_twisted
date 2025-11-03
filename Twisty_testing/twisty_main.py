@@ -19,15 +19,15 @@ DATA_SETTINGS = [DATA, SCRIPT_NAME]
 SEED = 40
 RNG = np.random.default_rng(SEED)
 EVOLUTION_CONFIG = {
-    "generations": 4,
-    "population_size": 10,
+    "generations": 2,
+    "population_size": 4,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
     "checkpoint_every": 1,  # Save checkpoint every N generations
     "auto_resume": True,    # Automatically resume from checkpoint if found
 }
-# if custom_spawn_pos is False, spawn_pos will be changed to [0,0,0] and bounding box correction will be done.
-EVAL_CONFIG = {"custom_spawn_pos": False, "spawn_pos": [0, 0, 0.39], "target_pos": [0, 5, 0.5], "brain_type": "sf_cpg"}
+# if correcting for bounding box, the height will be reduced to zero. Otherwise choose a custom z value for the height.
+EVAL_CONFIG = {"correct_for_bounding_box": True, "custom_z": 0.39, "custom_xy": [0, 0] ,"target_pos": [0, 5, 0.5], "brain_type": "na_cpg"}
 
 def run_evolution_experiment(
     generations: int = EVOLUTION_CONFIG['generations'],
@@ -58,7 +58,7 @@ def run_evolution_experiment(
     mixed_twisty_population = [
         create_individual(con_twisty=False) for _ in range(population_size)
     ]
-    evaluate_population(mixed_twisty_population, EVAL_CONFIG["custom_spawn_pos"], EVAL_CONFIG["spawn_pos"], EVAL_CONFIG["target_pos"], EVAL_CONFIG["brain_type"])
+    evaluate_population(mixed_twisty_population, EVAL_CONFIG["correct_for_bounding_box"], EVAL_CONFIG["custom_z"], EVAL_CONFIG["custom_xy"] ,EVAL_CONFIG["target_pos"], EVAL_CONFIG["brain_type"])
     twisty_spawnrate = 0.5
     twisty_maxspawn = int(population_size/5)
     # Track best individuals across all generations
@@ -74,7 +74,7 @@ def run_evolution_experiment(
             if chance <= twisty_p:
                 mixed_twisty_population.append(create_individual(True))
         console.log("Evaluating mixed-twisty population...")
-        evaluate_population(mixed_twisty_population, EVAL_CONFIG["custom_spawn_pos"], EVAL_CONFIG["spawn_pos"], EVAL_CONFIG["target_pos"], EVAL_CONFIG["brain_type"])
+        evaluate_population(mixed_twisty_population, EVAL_CONFIG["correct_for_bounding_box"], EVAL_CONFIG["custom_z"], EVAL_CONFIG["custom_xy"] ,EVAL_CONFIG["target_pos"], EVAL_CONFIG["brain_type"])
 
         # Track best individuals this generation
         current_best_mixed_twisty = max(mixed_twisty_population, key=lambda x: x.fitness)
@@ -169,7 +169,7 @@ def main() -> None:
     champion_robot = construct_mjspec_from_graph(champion.graph)
     # Change mode to "launcher" to see robot in interactive viewer
     # Change mode to "video" to record a video
-    visualize_champ(champion_robot, champion, EVAL_CONFIG["custom_spawn_pos"], EVAL_CONFIG["spawn_pos"], DATA_SETTINGS, EVAL_CONFIG["brain_type"], mode="launcher")
+    visualize_champ(champion_robot, champion, EVAL_CONFIG["correct_for_bounding_box"], EVAL_CONFIG["custom_z"], EVAL_CONFIG["custom_xy"] ,DATA_SETTINGS, EVAL_CONFIG["brain_type"], mode="launcher")
 
 if __name__ == "__main__":
     # Test several times

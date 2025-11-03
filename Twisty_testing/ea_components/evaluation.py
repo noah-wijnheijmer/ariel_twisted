@@ -5,12 +5,15 @@ import numpy as np
 from typing import Any
 from simulation.environments._simple_flat import SimpleFlatWorld
 from simulation.cpg.sf_cpg import CPGSensoryFeedback, sf_policy
+from simulation.cpg.na_cpg import (
+    NaCPG, create_fully_connected_adjacency, na_policy
+)
 
 console = Console()
 SEED = 40
 RNG = np.random.default_rng(SEED)
 
-def sf_for_fitness(robot: CoreModule, individual: Any, custom_spawn_pos: bool, spawn_pos: list[float], target_pos: list[float]) -> Any:
+def run_for_fitness(robot: CoreModule, individual: Any, correct_for_bounding: bool, spawn_z: float, spawn_xy:list[float], target_pos: list[float], brain_type: str = "sf_cpg") -> Any:
     """Modified run function that returns fitness based on distance to target."""
     try:
         if individual.fitness is not None:
@@ -23,7 +26,7 @@ def sf_for_fitness(robot: CoreModule, individual: Any, custom_spawn_pos: bool, s
         for i in range(len(robot.spec.geoms)):
             robot.spec.geoms[i].rgba[-1] = 0.5
     
-        world.spawn(robot.spec, spawn_position=spawn_pos, correct_for_bounding_box=custom_spawn_pos)
+        world.spawn(robot.spec, spawn_z=spawn_z, spawn_xy=spawn_xy, correct_for_bounding_box=correct_for_bounding)
         model = world.spec.compile()
         data = mujoco.MjData(model)
         mujoco.mj_resetData(model, data)
@@ -32,16 +35,24 @@ def sf_for_fitness(robot: CoreModule, individual: Any, custom_spawn_pos: bool, s
         console.log(f"DoF (model.nv): {model.nv}, Actuators (model.nu): {model.nu}")
     
         # Create CPG controller
-        weight_matrix = RNG.uniform(-0.1, 0.1, size=(model.nu, model.nu))
-        cpg = CPGSensoryFeedback(
-            num_neurons=int(model.nu),
-            sensory_term=-0.0,
-            _lambda=0.01,
-            coupling_weights=weight_matrix,
-        )
-        cpg.reset()
-        individual.brain_genotype = cpg.c
-        mujoco.set_mjcb_control(lambda m, d: sf_policy(m, d, cpg=cpg))
+        if brain_type == "sf_cpg":
+            weight_matrix = RNG.uniform(-0.1, 0.1, size=(model.nu, model.nu))
+            cpg = CPGSensoryFeedback(
+                num_neurons=int(model.nu),
+                sensory_term=-0.0,
+                _lambda=0.01,
+                coupling_weights=weight_matrix,
+            )
+            cpg.reset()
+            individual.brain_genotype = cpg.c
+            mujoco.set_mjcb_control(lambda m, d: sf_policy(m, d, cpg=cpg))
+        elif brain_type == "na_cpg":
+            adj_dict = create_fully_connected_adjacency(model.nu)
+            cpg = NaCPG(adj_dict, angle_tracking=True)
+            cpg.reset()
+            gen = cpg.get_flat_params()
+            individual.brain_genotype = gen
+            mujoco.set_mjcb_control(lambda m, d: na_policy(m, d, cpg=cpg))
     
         # Run simulation for target-seeking fitness
         simulation_time = 15.0  # seconds
