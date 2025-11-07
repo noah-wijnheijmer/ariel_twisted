@@ -1,3 +1,8 @@
+from robot_body.body_config import ModuleFaces
+from robot_body.modules.brick import BrickModule
+from robot_body.modules.core import CoreModule
+from robot_body.modules.hinge import HingeModule
+
 def gecko() -> CoreModule:
     """Gecko robot body.
 
@@ -72,7 +77,7 @@ def gecko() -> CoreModule:
     br_flipper = BrickModule(
         index=12,
     )
-
+    
     # Attach bodies
     core.sites[str(ModuleFaces.FRONT)].attach_body(
         body=neck.body,

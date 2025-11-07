@@ -4,6 +4,7 @@ from robot_body.constructor import construct_mjspec_from_graph
 from robot_body.hi_prob_decoding import save_graph_as_json
 from data_storing.data_store import (initialize_experiment_data, calculate_generation_statistics, finalize_experiment_data)
 from simulation.visualization import visualize_champ
+from robot_body.prebuilt.gecko_untwisted import gecko
 from rich.console import Console
 import numpy as np
 from typing import Any
@@ -27,7 +28,7 @@ EVOLUTION_CONFIG = {
     "auto_resume": True,    # Automatically resume from checkpoint if found
 }
 # if correcting for bounding box, the height will be reduced to zero. Otherwise choose a custom z value for the height.
-EVAL_CONFIG = {"correct_for_bounding_box": True, "custom_z": 0.39, "custom_xy": [0, 0] ,"target_pos": [0, 5, 0.5], "brain_type": "na_cpg"}
+EVAL_CONFIG = {"correct_for_bounding_box": True, "custom_z": 0.39, "custom_xy": [0, 0] ,"target_pos": [0, 5, 0.5], "brain_type": "sf_cpg"}
 
 def run_evolution_experiment(
     generations: int = EVOLUTION_CONFIG['generations'],
@@ -173,4 +174,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     # Test several times
-    main()
+    core = gecko()
+    print(core.sites["ModuleFaces.FRONT"].())
+    # main()
