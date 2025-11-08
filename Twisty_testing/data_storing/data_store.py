@@ -1,6 +1,8 @@
 from typing import Any
 import json
-from ea_components.individual import Individual
+from networkx import DiGraph
+from robot_body.hi_prob_decoding import HighProbabilityDecoder
+from ea_components.individual import Individual, individual_from_dict
 import numpy as np
 from pathlib import Path
 from rich.console import Console
@@ -79,3 +81,78 @@ def finalize_experiment_data(
     with open(data / experiment_filename, "w", encoding="utf-8") as f:
         json.dump(experiment_data, f, indent=2)
     console.log(f"📈 Complete experiment data saved to: {data / experiment_filename}")
+
+def save_checkpoint(
+        population: list[Individual],
+        generation_id: int,
+        config: dict[str, Any],
+        folder_path: str
+    ) -> str:
+    """Save a checkpoint of the current population and configuration."""
+
+    checkpoint_data = {
+        "generation_id": generation_id,
+        "config": config,
+        "population": [ind.to_dict(exclude_fields=['graph']) for ind in population],
+    }
+
+    base_filename = f"checkpoint_gen_{generation_id}.json"
+    directory = Path(folder_path)
+    checkpoint_path = directory / base_filename
+
+    if checkpoint_path.exists():
+        suffix = 1
+        while True:
+            candidate = directory / f"checkpoint_gen_{generation_id}_{suffix}.json"
+            if not candidate.exists():
+                checkpoint_path = candidate
+                break
+            suffix += 1
+    
+    with open(checkpoint_path, "w", encoding="utf-8") as f:
+        json.dump(checkpoint_data, f, indent=2)
+
+    console.log(f"Checkpoint saved to: {checkpoint_path}") # DEBUG
+    print(f"Checkpoint saved to: {checkpoint_path}")
+
+    return str(checkpoint_path)
+
+def load_checkpoint(file_path: str) -> tuple[int, list[Individual], dict[str, Any]]:
+    """Load a checkpoint and return generation id, population, and configuration."""
+    with open(file_path, "r", encoding="utf-8") as f:
+        checkpoint_data = json.load(f)
+
+    generation_id = checkpoint_data["generation_id"]
+    config = checkpoint_data["config"]
+
+    population_data = checkpoint_data["population"]
+
+    # Reconstruct graphs from genotype probabilities
+    for ind_data in population_data:
+        num_modules = len(ind_data["genotype"][0])
+
+        type_probability_space = np.array(ind_data["genotype"][0])
+        conn_probability_space = np.array(ind_data["genotype"][1])
+        rotation_probability_space = np.array(ind_data["genotype"][2])
+
+        # DEBUG
+        print()
+        print("Type probability space shape:", type_probability_space.shape)
+        print("Connection probability space shape:", conn_probability_space.shape)
+        print("Rotation probability space shape:", rotation_probability_space.shape)
+        print("num_modules:", num_modules)
+
+        # Decode the high-probability graph
+        hpd = HighProbabilityDecoder(num_modules)
+        graph: DiGraph[Any] = hpd.probability_matrices_to_graph(
+            type_probability_space,
+            conn_probability_space,
+            rotation_probability_space,
+        )
+        ind_data["graph"] = graph
+
+    population = [individual_from_dict(ind_data) for ind_data in population_data]
+
+    console.log(f"Checkpoint loaded from: {file_path}")
+
+    return generation_id, population, config

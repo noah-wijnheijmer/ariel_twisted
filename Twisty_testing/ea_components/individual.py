@@ -112,10 +112,48 @@ class Individual(SQLModel, table=True):
     def tags(self, tag: dict[JSONType, JSONType]) -> None:
         self.tags_ = {**self.tags_, **tag}
 
+    def to_dict(self, exclude_fields: list[str] = []) -> dict[str, Any]:
+        """Convert Individual to dictionary representation with optional exclusions."""
+        data = {
+            "id": self.id,
+            "alive": self.alive,
+            "time_of_birth": self.time_of_birth,
+            "time_of_death": self.time_of_death,
+            "time_alive": self.time_alive,
+            "requires_eval": self.requires_eval,
+            "fitness": self.fitness_,
+            "twisty": self.twisty,
+            "requires_init": self.requires_init,
+            "graph": self.graph_,
+            "genotype": self.genotype_,
+            "brain_genotype": self.brain_genotype_,
+            "tags": self.tags_,
+        }
+        for field in exclude_fields:
+            data.pop(field, None)
+        return data
 
-def create_individual(con_twisty: bool) -> Individual:
+
+def individual_from_dict(data: dict[str, Any]) -> Individual:
+    """Create Individual from dictionary representation."""
     ind = Individual()
-    num_modules = 20
+    ind.id = data.get("id")
+    ind.alive = data.get("alive", True)
+    ind.time_of_birth = data.get("time_of_birth", -1)
+    ind.time_of_death = data.get("time_of_death", -1)
+    ind.time_alive = data.get("time_alive", -1)
+    ind.requires_eval = data.get("requires_eval", True)
+    ind.fitness_ = data.get("fitness")
+    ind.twisty = data.get("twisty", False)
+    ind.requires_init = data.get("requires_init", True)
+    ind.graph_ = data.get("graph")
+    ind.genotype_ = data.get("genotype")
+    ind.brain_genotype_ = data.get("brain_genotype")
+    ind.tags_ = data.get("tags", {})
+    return ind
+
+def create_individual(con_twisty: bool, num_modules: int=20) -> Individual:
+    ind = Individual()
 
     # "Type" probability space - bias towards HINGE modules for functional robots
     type_probability_space = RNG.random(
@@ -161,6 +199,17 @@ def create_individual(con_twisty: bool) -> Individual:
         conn_probability_space,
         rotation_probability_space,
     )
+    
+    # ===== DEBUG PRINTS =====
+
+    print()
+    print("Type probability space shape:", type_probability_space.shape)
+    print("Connection probability space shape:", conn_probability_space.shape)
+    print("Rotation probability space shape:", rotation_probability_space.shape)
+    print()
+
+    # ========================
+
     ind.genotype = [type_probability_space.tolist(), conn_probability_space.tolist(), rotation_probability_space.tolist()]
     ind.graph = graph
     ind.twisty = con_twisty
