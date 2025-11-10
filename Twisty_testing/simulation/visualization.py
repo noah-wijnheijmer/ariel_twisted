@@ -19,131 +19,95 @@ import mujoco
 console = Console()
 SEED = 40
 RNG = np.random.default_rng(SEED)
+import numpy as np
+import matplotlib.pyplot as plt  # ADD THIS
+# ...existing code...
 
-def visualize_champ(robot: CoreModule, individual: Individual, correct_for_bounding: bool, spawn_z: float, spawn_xy: list[float], path_settings: list[Any], brain_type: str, mode: str = "video") -> None: #Visualizes the champion robot after evolution
-    """Entry point."""
-    # BugFix -> "Python exception raised"
+def visualize_champ(robot: CoreModule, individual: Individual, correct_for_bounding: bool, spawn_z: float, spawn_xy: list[float], path_settings: list[Any], brain_type: str, mode: str = "video") -> list[list[float]]:
     mujoco.set_mjcb_control(None)
-
-    # MuJoCo basics
     world = SimpleFlatWorld()
-
-    # Set random colors for geoms
     for i in range(len(robot.spec.geoms)):
         robot.spec.geoms[i].rgba[-1] = 0.5
 
-    # Spawn the robot at the world
-    world.spawn(robot.spec, spawn_z=spawn_z, spawn_xy=spawn_xy, correct_for_bounding_box=correct_for_bounding) #read as champion_robot.spec. it's just being accessed through the parameter name robot.
-
-    # Compile the model
+    world.spawn(robot.spec, spawn_z=spawn_z, spawn_xy=spawn_xy, correct_for_bounding_box=correct_for_bounding)
     model = world.spec.compile()
     data = mujoco.MjData(model)
-
-    # Reset state and time of simulation
     mujoco.mj_resetData(model, data)
-    
-    # Number of actuators and DoFs
     console.log(f"DoF (model.nv): {model.nv}, Actuators (model.nu): {model.nu}")
 
-    # Save the model to XML
     xml = world.spec.to_xml()
     with (path_settings[0] / f"{path_settings[1]}.xml").open("w", encoding="utf-8") as f:
         f.write(xml)
-    
-    # Actuators and CPG
-    mujoco.set_mjcb_control(None)
+
+    # ---------- Brain / Controller setup (define ctrl & cpg) ----------
+    tracker = Tracker(mujoco_obj_to_find=mujoco.mjtObj.mjOBJ_GEOM, name_to_bind="core")
+    tracker.setup(world.spec, data)
+
     if brain_type == "na_cpg":
-        adj_dict = create_fully_connected_adjacency(model.nu)
-        cpg = NaCPG(adj_dict, angle_tracking=True)
+        adj = create_fully_connected_adjacency(model.nu)
+        cpg = NaCPG(adj, angle_tracking=True)
         cpg.reset()
-        gen = cpg.get_flat_params()
-        # add brain genotype to the individual
-        individual.brain_genotype = gen
-
-        # Initialize robot tracker
-        mujoco_type_to_find = mujoco.mjtObj.mjOBJ_GEOM
-        name_to_bind = "core"
-        tracker = Tracker(
-            mujoco_obj_to_find=mujoco_type_to_find,
-            name_to_bind=name_to_bind,
-        )
-        tracker.setup(world.spec, data)
-
-        ctrl = Controller(
-            controller_callback_function=na_policy,
-            time_steps_per_ctrl_step=1,
-            tracker=tracker,
-        )
+        individual.brain_genotype = cpg.get_flat_params()
+        ctrl = Controller(controller_callback_function=na_policy, time_steps_per_ctrl_step=1, tracker=tracker)
     elif brain_type == "sf_cpg":
-        weight_matrix = individual.brain_genotype
-        cpg = CPGSensoryFeedback(
-            num_neurons=int(model.nu),
-            sensory_term=-0.0,
-            _lambda=0.01,
-            coupling_weights=weight_matrix,
-        )
+        # assumes individual.brain_genotype already exists
+        weights = individual.brain_genotype
+        cpg = CPGSensoryFeedback(num_neurons=int(model.nu), sensory_term=0.0, _lambda=0.01, coupling_weights=weights)
         cpg.reset()
-        # add brain genotype to the individual
-        # individual.brain_genotype = cpg.c
+        ctrl = Controller(controller_callback_function=sf_policy, time_steps_per_ctrl_step=1, tracker=tracker)
+    else:
+        cpg = None
+        ctrl = Controller(controller_callback_function=lambda m, d, _: None, time_steps_per_ctrl_step=1, tracker=tracker)
+    # ---------------------------------------------------------------
 
-        # Initialize robot tracker
-        mujoco_type_to_find = mujoco.mjtObj.mjOBJ_GEOM
-        name_to_bind = "core"
-        tracker = Tracker(
-            mujoco_obj_to_find=mujoco_type_to_find,
-            name_to_bind=name_to_bind,
-        )
-        tracker.setup(world.spec, data)
+    mujoco.set_mjcb_control(lambda m, d: ctrl.set_control(m, d, cpg))  # type: ignore
 
-        # Initialize controller
-        ctrl = Controller(
-            controller_callback_function=sf_policy,
-            time_steps_per_ctrl_step=1,
-            tracker=tracker,
-        )
+    sim_duration = 5.0
+    timestep = model.opt.timestep
+    steps = int(sim_duration / timestep)
+    history: list[list[float]] = []
 
-    mujoco.set_mjcb_control(lambda m, d: ctrl.set_control(m, d, cpg)) # type: ignore
+    def step_and_collect(n: int) -> None:
+        for _ in range(n):
+            mujoco.mj_step(model, data)
+            base_pos = np.array(data.xipos[0], dtype=float)
+            if np.isfinite(base_pos).all():
+                history.append([float(base_pos[0]), float(base_pos[1]), float(base_pos[2])])
 
-    console.log(f"xpos before sim: {tracker.history['xpos'][0]}") # type: ignore
+    if mode == "simple_runner":
+        step_and_collect(steps)
+    elif mode == "video":
+        path_to_video_folder = str(path_settings[0] / "videos")
+        video_recorder = VideoRecorder(output_folder=path_to_video_folder)
+        step_and_collect(steps)
+        video_renderer(model, data, duration=sim_duration, video_recorder=video_recorder)
+    elif mode == "launcher":
+        warmup_steps = int(1.0 / timestep)
+        step_and_collect(warmup_steps)
+        viewer.launch(model, data)
+    else:
+        console.log(f"Mode '{mode}' not recognized. No simulation run.")
 
-    match mode:
-        # Launches interactive viewer
-        case "launcher":
-            # Launch viewer with proper camera settings for small robots
-            viewer.launch(model, data)
-            # console.log("🎥 Viewer launched!")
+    return history
 
-        # This disables visualisation (fastest option)
-        case "simple_runner":
-            simple_runner(
-                model,
-                data,
-                duration=30,
-            )
 
-        # Records video of the simulation
-        case "video":
-            path_to_video_folder = str(path_settings[0] / "videos")
-            video_recorder = VideoRecorder(output_folder=path_to_video_folder)
-
-            # Render with video recorder
-            video_renderer(
-                model,
-                data,
-                duration=30,
-                video_recorder=video_recorder,
-            )
-
-    # return fitness_function(tracker.history["xpos"])
-            # Render with video recorder
-            video_renderer(
-                model,
-                data,
-                duration=30,
-                video_recorder=video_recorder,
-            )
-        
-        case _:
-            console.log(f"Mode '{mode}' not recognized. No simulation run.")
-
-    # return fitness_function(tracker.history["xpos"])
+def show_qpos_history(history: list[list[float]]) -> None:
+    pos_data = np.array(history, dtype=float)
+    if pos_data.ndim != 2 or pos_data.shape[1] < 2:
+        console.log("[red]History format invalid for plotting.")
+        return
+    # Drop non-finite rows to avoid plotting NaNs
+    pos_data = pos_data[np.isfinite(pos_data).all(axis=1)]
+    if pos_data.size == 0:
+        console.log("[yellow]No finite samples to plot.")
+        return
+    plt.figure(figsize=(10, 6))
+    plt.plot(pos_data[:, 0], pos_data[:, 1], "b-", label="Path")
+    plt.plot(pos_data[0, 0], pos_data[0, 1], "go", label="Start")
+    plt.plot(pos_data[-1, 0], pos_data[-1, 1], "ro", label="End")
+    plt.xlabel("X Position")
+    plt.ylabel("Y Position")
+    plt.title("Robot Path in XY Plane")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
