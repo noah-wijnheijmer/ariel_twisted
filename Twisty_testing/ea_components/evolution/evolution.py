@@ -38,10 +38,8 @@ def evolve_generation(population: list[Individual],
     i = max(ids)+1
     if id != -1:
         i = id
-    print(i)
     # Generate offspring through crossover and mutation
     while len(new_population) < len(population):
-        print(i)
         if RNG.random() < crossover_rate:
             # Crossover: select two parents and create offspring
             parent1 = tournament_selection(population)
