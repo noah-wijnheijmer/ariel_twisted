@@ -2,7 +2,7 @@ from ea_components.individual import Individual, create_individual, evaluate_pop
 from ea_components.evolution.evolution import evolve_generation
 from robot_body.constructor import construct_mjspec_from_graph
 from robot_body.hi_prob_decoding import save_graph_as_json
-from data_storing.data_store import (initialize_experiment_data, calculate_generation_statistics, finalize_experiment_data)
+from data_storing.data_store import (initialize_experiment_data, calculate_generation_statistics, finalize_experiment_data, save_checkpoint, load_checkpoint)
 from simulation.visualization import visualize_champ
 from rich.console import Console
 import numpy as np
@@ -20,14 +20,17 @@ SEED = 40
 RNG = np.random.default_rng(SEED)
 EVOLUTION_CONFIG = {
     "generations": 10,
-    "population_size": 100,
+    "population_size": 10,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
     "checkpoint_every": 1,  # Save checkpoint every N generations
-    "auto_resume": True,    # Automatically resume from checkpoint if found
+    "load_checkpoint": False,    # Automatically resume from checkpoint if found
+    "checkpoint_folder": f"Twisty_testing/checkpoints/experiment_1",
+    "checkpoint_gen": 5, # which generation to load from.
+    "start_id": 91 # if old graph data should be kept, make it some higher number.
 }
 # if correcting for bounding box, the height will be reduced to zero. Otherwise choose a custom z value for the height.
-EVAL_CONFIG = {"correct_for_bounding_box": True, "custom_z": 0.39, "custom_xy": [0, 0] ,"target_pos": [0, 5, 0.5], "brain_type": "sf_cpg"}
+EVAL_CONFIG = {"correct_for_bounding_box": True, "custom_z": 0.39, "custom_xy": [0, 0] ,"target_pos": [0, 5, 0.5], "brain_type": "sf_cpg", "num_modules": 10}
 
 def run_evolution_experiment(
     generations: int = EVOLUTION_CONFIG['generations'],
@@ -55,15 +58,27 @@ def run_evolution_experiment(
     experiment_data = initialize_experiment_data(generations, population_size)
     
     # Initialize separate populations
-    non_twisty_population = [
-        create_individual(con_twisty=False) for _ in range(population_size)
-    ]
+    if EVOLUTION_CONFIG["load_checkpoint"] is True:
+        base_filename = f"checkpoint_gen_{EVOLUTION_CONFIG['checkpoint_gen']}.json"
+        path = Path(EVOLUTION_CONFIG["checkpoint_folder"])
+        checkpoint_path = path / base_filename
+        loaded_generation_id, non_twisty_population, _ = load_checkpoint(file_path=checkpoint_path)
+        generations = generations - (loaded_generation_id + 1)
+        print(generations)
+    else:
+        non_twisty_population = [
+        create_individual(con_twisty=False, id=i, num_modules=EVAL_CONFIG["num_modules"]) for i in range(population_size)]
     evaluate_population(non_twisty_population, EVAL_CONFIG["correct_for_bounding_box"], EVAL_CONFIG["custom_z"], EVAL_CONFIG["custom_xy"] ,EVAL_CONFIG["target_pos"], EVAL_CONFIG["brain_type"])
     # Track best individuals across all generations
     best_non_twisty_ever = max(non_twisty_population, key=lambda x: x.fitness)
     best_non_twisty_fitness = -float('inf')
+    start_id = EVOLUTION_CONFIG["start_id"]
     # Evolution loop
     for generation in range(generations):
+        if EVOLUTION_CONFIG["checkpoint_every"] == 0:
+            console.log("checkpoint saving step should be higher than 0.")
+        if generation % int(EVOLUTION_CONFIG["checkpoint_every"]) == 0:
+            save_checkpoint(generation_id=generation, population=non_twisty_population, folder_path="Twisty_testing/checkpoints/experiment_1", config=EVOLUTION_CONFIG)
         console.log(f"\n--- Generation {generation + 1} ---")
         console.log("Evaluating non-twisty population...")
         evaluate_population(non_twisty_population, EVAL_CONFIG["correct_for_bounding_box"], EVAL_CONFIG["custom_z"], EVAL_CONFIG["custom_xy"] ,EVAL_CONFIG["target_pos"], EVAL_CONFIG["brain_type"])
@@ -127,10 +142,13 @@ def run_evolution_experiment(
             f"IQR: [{non_twisty_stats['q25']:.3f}, "
             f"{non_twisty_stats['q75']:.3f}]"
         )
-        
         # Evolve populations (except for last generation)
         if generation < generations - 1:
-            non_twisty_population = evolve_generation(non_twisty_population)
+            if EVOLUTION_CONFIG["load_checkpoint"] is True:
+                non_twisty_population = evolve_generation(non_twisty_population, id=start_id)
+                start_id = -1
+            else:
+                non_twisty_population = evolve_generation(non_twisty_population)
 
     champion = best_non_twisty_ever
     if champion.twisty is True:

@@ -44,7 +44,7 @@ def run_for_fitness(robot: CoreModule, individual: Any, correct_for_bounding: bo
                 coupling_weights=weight_matrix,
             )
             cpg.reset()
-            individual.brain_genotype = cpg.c
+            individual.brain_genotype = cpg.c.tolist()
             mujoco.set_mjcb_control(lambda m, d: sf_policy(m, d, cpg=cpg))
         elif brain_type == "na_cpg":
             adj_dict = create_fully_connected_adjacency(model.nu)

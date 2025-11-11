@@ -4,6 +4,7 @@ from networkx import DiGraph
 from collections.abc import Hashable, Sequence
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
+from pathlib import Path
 from rich.console import Console
 from robot_body.body_config import (
     NUM_OF_FACES,
@@ -11,7 +12,8 @@ from robot_body.body_config import (
     NUM_OF_TYPES_OF_MODULES,
     TWISTY_INDEXES,
 )
-from robot_body.hi_prob_decoding import HighProbabilityDecoder
+from robot_body.hi_prob_decoding import HighProbabilityDecoder, save_graph_as_json
+import os
 from robot_body.constructor import construct_mjspec_from_graph
 from ea_components.evaluation import run_for_fitness
 # Global constants
@@ -152,9 +154,9 @@ def individual_from_dict(data: dict[str, Any]) -> Individual:
     ind.tags_ = data.get("tags", {})
     return ind
 
-def create_individual(con_twisty: bool, num_modules: int=20) -> Individual:
+def create_individual(con_twisty: bool, id: int, num_modules: int=20) -> Individual:
     ind = Individual()
-
+    ind.id = id
     # "Type" probability space - bias towards HINGE modules for functional robots
     type_probability_space = RNG.random(
         size=(num_modules, NUM_OF_TYPES_OF_MODULES),
@@ -199,7 +201,11 @@ def create_individual(con_twisty: bool, num_modules: int=20) -> Individual:
         conn_probability_space,
         rotation_probability_space,
     )
-    
+    folder_path = "Twisty_testing/population_data/graphs"
+    directory = Path(folder_path)
+    os.makedirs(directory, exist_ok=True)
+    path = directory / f"{ind.id}_graph.json"
+    save_graph_as_json(graph, path)
     # ===== DEBUG PRINTS =====
 
     print()
@@ -219,15 +225,20 @@ def create_individual_from_matrices(
     type_probs: np.ndarray[Any, Any], 
     conn_probs: np.ndarray[Any, Any], 
     rotation_probs: np.ndarray[Any, Any], 
-    twisty: bool
+    twisty: bool,
+    id: int
 ) -> Individual:
     """Create individual from probability matrices."""
     ind = Individual()
-    
+    ind.id = id
     # Decode to graph
     hpd = HighProbabilityDecoder(len(type_probs))
     graph = hpd.probability_matrices_to_graph(type_probs, conn_probs, rotation_probs)
-    
+    folder_path = "Twisty_testing/population_data/graphs"
+    directory = Path(folder_path)
+    os.makedirs(directory, exist_ok=True)
+    path = directory / f"{ind.id}_graph.json"
+    save_graph_as_json(graph, path)
     ind.genotype = [type_probs.tolist(), conn_probs.tolist(), rotation_probs.tolist()]
     ind.graph = graph
     ind.twisty = twisty
