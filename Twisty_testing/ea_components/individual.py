@@ -197,9 +197,9 @@ def create_individual(con_twisty: bool, id: int, num_modules: int=20) -> Individ
     # Decode the high-probability graph
     hpd = HighProbabilityDecoder(num_modules)
     graph: DiGraph[Any] = hpd.probability_matrices_to_graph(
-        type_probability_space,
-        conn_probability_space,
-        rotation_probability_space,
+        type_probability_space.copy(),
+        conn_probability_space.copy(),
+        rotation_probability_space.copy(),
     )
     folder_path = "Twisty_testing/population_data/graphs"
     directory = Path(folder_path)
@@ -233,7 +233,11 @@ def create_individual_from_matrices(
     ind.id = id
     # Decode to graph
     hpd = HighProbabilityDecoder(len(type_probs))
-    graph = hpd.probability_matrices_to_graph(type_probs, conn_probs, rotation_probs)
+    graph = hpd.probability_matrices_to_graph(
+        np.array(type_probs, copy=True),
+        np.array(conn_probs, copy=True),
+        np.array(rotation_probs, copy=True),
+    )
     folder_path = "Twisty_testing/population_data/graphs"
     directory = Path(folder_path)
     os.makedirs(directory, exist_ok=True)
