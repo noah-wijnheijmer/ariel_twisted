@@ -3,7 +3,7 @@ from ea_components.evolution.evolution import evolve_generation
 from robot_body.constructor import construct_mjspec_from_graph
 from robot_body.hi_prob_decoding import save_graph_as_json
 from data_storing.data_store import (initialize_experiment_data, calculate_generation_statistics, finalize_experiment_data, save_checkpoint, load_checkpoint)
-from simulation.visualization import visualize_champ
+from simulation.visualization import (visualize_champ, show_qpos_history, plot_fitness_over_generations)
 from rich.console import Console
 import numpy as np
 from typing import Any
@@ -19,7 +19,7 @@ DATA_SETTINGS = [DATA, SCRIPT_NAME]
 SEED = 40
 RNG = np.random.default_rng(SEED)
 EVOLUTION_CONFIG = {
-    "generations": 10,
+    "generations": 20,
     "population_size": 10,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
@@ -189,13 +189,25 @@ def run_evolution_experiment(
     return champion, experiment_data
 def main() -> None:
     """Entry point for evolutionary experiment."""
-    champion, _ = run_evolution_experiment() #You can set some experimental variables here or all the way above in EVOLUTION_CONFIG
-    # Visualize the champion robot - change mode here!
+    champion, experiment_data = run_evolution_experiment()
+    
+    # Plot fitness over generations
+    console.log("\n📊 Plotting fitness over generations...")
+    plot_fitness_over_generations(experiment_data, population_name="mixed_twisty")
     console.log("\n🏆 Visualizing champion robot...")
     champion_robot = construct_mjspec_from_graph(champion.graph)
-    # Change mode to "launcher" to see robot in interactive viewer
-    # Change mode to "video" to record a video
-    visualize_champ(champion_robot, champion, EVAL_CONFIG["correct_for_bounding_box"], EVAL_CONFIG["custom_z"], EVAL_CONFIG["custom_xy"] ,DATA_SETTINGS, EVAL_CONFIG["brain_type"], mode="launcher")
+    history = visualize_champ(
+        champion_robot,
+        champion,
+        EVAL_CONFIG["correct_for_bounding_box"],
+        EVAL_CONFIG["custom_z"],
+        EVAL_CONFIG["custom_xy"],
+        DATA_SETTINGS,
+        EVAL_CONFIG["brain_type"],
+        mode="launcher"
+    )
+    if history:
+        show_qpos_history(history)
 
 if __name__ == "__main__":
     # Test several times
