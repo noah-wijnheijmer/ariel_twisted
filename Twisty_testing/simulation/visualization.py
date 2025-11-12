@@ -111,3 +111,73 @@ def show_qpos_history(history: list[list[float]]) -> None:
     plt.legend()
     plt.grid(True)
     plt.show()
+
+
+def plot_fitness_over_generations(
+    experiment_data: dict[str, Any],
+    population_name: str = "mixed_twisty"
+) -> None:
+    """Plot fitness over generations showing max, average, and min values.
+
+    Args:
+        experiment_data: Dictionary containing generation statistics
+            from the experiment
+        population_name: Name of the population key in the data
+            (e.g., "mixed_twisty", "twisty", "non_twisty")
+    """
+    if (
+        "generations" not in experiment_data
+        or len(experiment_data["generations"]) == 0
+    ):
+        console.log("No generation data found in experiment data.")
+        return
+
+    generations = []
+    max_fitness = []
+    avg_fitness = []
+    min_fitness = []
+
+    for gen_data in experiment_data["generations"]:
+        generations.append(gen_data["generation"])
+
+        # Check if the population_name exists in this generation
+        if population_name in gen_data:
+            stats = gen_data[population_name]
+            max_fitness.append(stats["max"])
+            avg_fitness.append(stats["mean"])
+            min_fitness.append(stats["min"])
+        else:
+            msg = (
+                f"Population '{population_name}' "
+                f"not found in generation {gen_data['generation']}"
+            )
+            console.log(msg)
+            return
+
+    # Create the plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(
+        generations, max_fitness, "b-",
+        marker="o", markersize=4, label="Max", linewidth=2,
+    )
+    plt.plot(
+        generations, avg_fitness, "purple",
+        marker="s", markersize=3, label="Average", linewidth=2,
+    )
+    plt.plot(
+        generations, min_fitness, "gray",
+        marker="^", markersize=3, label="Min", linewidth=1.5,
+    )
+
+    plt.xlabel("Generation No.", fontsize=12)
+    plt.ylabel("Fitness", fontsize=12)
+    title = f"Fitness over Generations - {population_name.replace('_', ' ').title()}"
+    plt.title(title, fontsize=14)
+    plt.legend(loc="upper left", fontsize=10)
+    plt.grid(visible=True, alpha=0.3)
+    
+    # I force integer ticks on x-axis (half generations don't make sense to me)
+    plt.gca().xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    
+    plt.tight_layout()
+    plt.show()

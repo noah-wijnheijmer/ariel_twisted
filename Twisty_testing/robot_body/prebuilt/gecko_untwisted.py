@@ -1,3 +1,11 @@
+"""TODO(jmdm): description of script."""
+
+from robot_body.body_config import ModuleFaces
+from robot_body.modules.brick import BrickModule
+from robot_body.modules.core import CoreModule
+from robot_body.modules.hinge import HingeModule
+
+
 def gecko() -> CoreModule:
     """Gecko robot body.
 
