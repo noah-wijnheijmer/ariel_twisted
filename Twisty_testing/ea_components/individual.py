@@ -4,6 +4,7 @@ from networkx import DiGraph
 from collections.abc import Hashable, Sequence
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
+from pathlib import Path
 from rich.console import Console
 from robot_body.body_config import (
     NUM_OF_FACES,
@@ -11,7 +12,8 @@ from robot_body.body_config import (
     NUM_OF_TYPES_OF_MODULES,
     TWISTY_INDEXES,
 )
-from robot_body.hi_prob_decoding import HighProbabilityDecoder
+from robot_body.hi_prob_decoding import HighProbabilityDecoder, save_graph_as_json
+import os
 from robot_body.constructor import construct_mjspec_from_graph
 from ea_components.evaluation import run_for_fitness
 # Global constants
@@ -112,11 +114,49 @@ class Individual(SQLModel, table=True):
     def tags(self, tag: dict[JSONType, JSONType]) -> None:
         self.tags_ = {**self.tags_, **tag}
 
+    def to_dict(self, exclude_fields: list[str] = []) -> dict[str, Any]:
+        """Convert Individual to dictionary representation with optional exclusions."""
+        data = {
+            "id": self.id,
+            "alive": self.alive,
+            "time_of_birth": self.time_of_birth,
+            "time_of_death": self.time_of_death,
+            "time_alive": self.time_alive,
+            "requires_eval": self.requires_eval,
+            "fitness": self.fitness_,
+            "twisty": self.twisty,
+            "requires_init": self.requires_init,
+            "graph": self.graph_,
+            "genotype": self.genotype_,
+            "brain_genotype": self.brain_genotype_,
+            "tags": self.tags_,
+        }
+        for field in exclude_fields:
+            data.pop(field, None)
+        return data
 
-def create_individual(con_twisty: bool) -> Individual:
+
+def individual_from_dict(data: dict[str, Any]) -> Individual:
+    """Create Individual from dictionary representation."""
     ind = Individual()
-    num_modules = 20
+    ind.id = data.get("id")
+    ind.alive = data.get("alive", True)
+    ind.time_of_birth = data.get("time_of_birth", -1)
+    ind.time_of_death = data.get("time_of_death", -1)
+    ind.time_alive = data.get("time_alive", -1)
+    ind.requires_eval = data.get("requires_eval", True)
+    ind.fitness_ = data.get("fitness")
+    ind.twisty = data.get("twisty", False)
+    ind.requires_init = data.get("requires_init", True)
+    ind.graph_ = data.get("graph")
+    ind.genotype_ = data.get("genotype")
+    ind.brain_genotype_ = data.get("brain_genotype")
+    ind.tags_ = data.get("tags", {})
+    return ind
 
+def create_individual(con_twisty: bool, id: int, num_modules: int=20) -> Individual:
+    ind = Individual()
+    ind.id = id
     # "Type" probability space - bias towards HINGE modules for functional robots
     type_probability_space = RNG.random(
         size=(num_modules, NUM_OF_TYPES_OF_MODULES),
@@ -157,10 +197,25 @@ def create_individual(con_twisty: bool) -> Individual:
     # Decode the high-probability graph
     hpd = HighProbabilityDecoder(num_modules)
     graph: DiGraph[Any] = hpd.probability_matrices_to_graph(
-        type_probability_space,
-        conn_probability_space,
-        rotation_probability_space,
+        type_probability_space.copy(),
+        conn_probability_space.copy(),
+        rotation_probability_space.copy(),
     )
+    folder_path = "Twisty_testing/population_data/graphs"
+    directory = Path(folder_path)
+    os.makedirs(directory, exist_ok=True)
+    path = directory / f"{ind.id}_graph.json"
+    save_graph_as_json(graph, path)
+    # ===== DEBUG PRINTS =====
+
+    print()
+    print("Type probability space shape:", type_probability_space.shape)
+    print("Connection probability space shape:", conn_probability_space.shape)
+    print("Rotation probability space shape:", rotation_probability_space.shape)
+    print()
+
+    # ========================
+
     ind.genotype = [type_probability_space.tolist(), conn_probability_space.tolist(), rotation_probability_space.tolist()]
     ind.graph = graph
     ind.twisty = con_twisty
@@ -170,15 +225,24 @@ def create_individual_from_matrices(
     type_probs: np.ndarray[Any, Any], 
     conn_probs: np.ndarray[Any, Any], 
     rotation_probs: np.ndarray[Any, Any], 
-    twisty: bool
+    twisty: bool,
+    id: int
 ) -> Individual:
     """Create individual from probability matrices."""
     ind = Individual()
-    
+    ind.id = id
     # Decode to graph
     hpd = HighProbabilityDecoder(len(type_probs))
-    graph = hpd.probability_matrices_to_graph(type_probs, conn_probs, rotation_probs)
-    
+    graph = hpd.probability_matrices_to_graph(
+        np.array(type_probs, copy=True),
+        np.array(conn_probs, copy=True),
+        np.array(rotation_probs, copy=True),
+    )
+    folder_path = "Twisty_testing/population_data/graphs"
+    directory = Path(folder_path)
+    os.makedirs(directory, exist_ok=True)
+    path = directory / f"{ind.id}_graph.json"
+    save_graph_as_json(graph, path)
     ind.genotype = [type_probs.tolist(), conn_probs.tolist(), rotation_probs.tolist()]
     ind.graph = graph
     ind.twisty = twisty

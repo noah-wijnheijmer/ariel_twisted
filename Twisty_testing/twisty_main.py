@@ -66,10 +66,12 @@ def run_evolution_experiment(
     evaluate_population(mixed_twisty_population, EVAL_CONFIG["correct_for_bounding_box"], EVAL_CONFIG["custom_z"], EVAL_CONFIG["custom_xy"] ,EVAL_CONFIG["target_pos"], EVAL_CONFIG["brain_type"])
     twisty_spawnrate = 0.5
     twisty_maxspawn = int(population_size/5)
+    
     # Track best individuals across all generations
     best_mixed_twisty_ever = max(mixed_twisty_population, key=lambda x: x.fitness)
     best_mixed_twisty_fitness = -float('inf')
     twisty_rate = twisty_spawnrate/generations
+
     # Evolution loop
     for generation in range(generations):
         console.log(f"\n--- Generation {generation + 1} ---")

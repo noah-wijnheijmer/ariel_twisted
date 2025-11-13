@@ -1,9 +1,8 @@
-import numpy as np
+simport numpy as np
 from robot_body.modules.core import CoreModule
 from ea_components.individual import Individual
 from simulation.environments._simple_flat import SimpleFlatWorld
 from utils.tracker import Tracker
-from utils.runners import simple_runner
 from utils.video_recorder import VideoRecorder
 from utils.renderers import video_renderer
 from simulation.cpg.sf_cpg import CPGSensoryFeedback, sf_policy

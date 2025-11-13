@@ -6,7 +6,8 @@ import numpy as np
 SEED = 40
 RNG = np.random.default_rng(SEED)
 
-def evolve_generation(population: list[Individual], 
+def evolve_generation(population: list[Individual],
+                                    id: int = -1, 
                                     mutation_rate: float = 0.1,
                                     crossover_rate: float = 0.7,
                                     elitism: int = 1) -> list[Individual]:
@@ -29,26 +30,31 @@ def evolve_generation(population: list[Individual],
     print(max(fitnesses))
     # Next generation
     new_population = []
-    
     # Elitism - keep best individual(s)
     new_population.extend(population[:elitism])
-    
+    ids = []
+    for individual in population:
+        ids.append(individual.id)
+    i = max(ids)+1
+    if id != -1:
+        i = id
     # Generate offspring through crossover and mutation
     while len(new_population) < len(population):
         if RNG.random() < crossover_rate:
             # Crossover: select two parents and create offspring
             parent1 = tournament_selection(population)
             parent2 = tournament_selection(population)
-            child = crossover_individuals(parent1, parent2)
+            child = crossover_individuals(parent1, parent2, id=i)
             
             # Apply mutation to crossover offspring (optional but recommended)
             if RNG.random() < mutation_rate:
-                child = mutate_individual(child, mutation_rate)  # Lower mutation rate for crossover offspring
+                child = mutate_individual(individual=child, id=i, mutation_rate=mutation_rate)  # Lower mutation rate for crossover offspring
         else:
             # Mutation only: select one parent and mutate
             parent = tournament_selection(population)
-            child = mutate_individual(parent, mutation_rate)
-        
+            child = mutate_individual(individual=parent, id=i, mutation_rate=mutation_rate )
+        child.id = i
         new_population.append(child)
+        i += 1
     fitnesses = []
     return new_population

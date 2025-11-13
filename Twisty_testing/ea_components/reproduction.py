@@ -78,7 +78,8 @@ def float_creep(
 
 def crossover_individuals(
     parent1: Individual, 
-    parent2: Individual, 
+    parent2: Individual,
+    id: int, 
     alpha: float = 0.5,
 ) -> Individual:
     """Create offspring by crossing over probability matrices from two parents.
@@ -116,12 +117,12 @@ def crossover_individuals(
         child_rot[:, TWISTY_INDEXES] = 0
     
     return create_individual_from_matrices(
-        child_type, child_conn, child_rot, twisty
+        child_type, child_conn, child_rot, twisty, id=id
     )
 
 
 def mutate_individual(
-    individual: Individual, mutation_rate: float = 0.1
+    individual: Individual, id: int, mutation_rate: float = 0.1, 
 ) -> Individual:
     """Mutate probability matrices using ARIEL's (old) float_creep mutation.
     
@@ -177,6 +178,7 @@ def mutate_individual(
         np.array(conn_probs), 
         np.array(rotation_probs),
         individual.twisty,
+        id=id
     )
 
 class Crossover:
