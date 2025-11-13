@@ -1,4 +1,3 @@
-simport numpy as np
 from robot_body.modules.core import CoreModule
 from ea_components.individual import Individual
 from simulation.environments._simple_flat import SimpleFlatWorld
@@ -14,13 +13,11 @@ from rich.console import Console
 from typing import Any
 from mujoco import viewer
 import mujoco
-
+import numpy as np
 console = Console()
 SEED = 40
 RNG = np.random.default_rng(SEED)
-import numpy as np
-import matplotlib.pyplot as plt  # ADD THIS
-# ...existing code...
+import matplotlib.pyplot as plt
 
 def visualize_champ(robot: CoreModule, individual: Individual, correct_for_bounding: bool, spawn_z: float, spawn_xy: list[float], path_settings: list[Any], brain_type: str, mode: str = "video") -> list[list[float]]:
     mujoco.set_mjcb_control(None)
@@ -49,7 +46,6 @@ def visualize_champ(robot: CoreModule, individual: Individual, correct_for_bound
         individual.brain_genotype = cpg.get_flat_params()
         ctrl = Controller(controller_callback_function=na_policy, time_steps_per_ctrl_step=1, tracker=tracker)
     elif brain_type == "sf_cpg":
-        # assumes individual.brain_genotype already exists
         weights = individual.brain_genotype
         cpg = CPGSensoryFeedback(num_neurons=int(model.nu), sensory_term=0.0, _lambda=0.01, coupling_weights=weights)
         cpg.reset()
