@@ -3,7 +3,7 @@ from ea_components.evolution.evolution import evolve_generation
 from robot_body.constructor import construct_mjspec_from_graph
 from robot_body.hi_prob_decoding import save_graph_as_json
 from data_storing.data_store import (initialize_experiment_data, calculate_generation_statistics, finalize_experiment_data, save_checkpoint, load_checkpoint)
-from simulation.visualization import (visualize_champ, show_qpos_history, plot_fitness_over_generations)
+from simulation.visualization import (visualize_champ, show_xpos_history, plot_fitness_over_generations)
 from rich.console import Console
 import numpy as np
 from typing import Any
@@ -19,7 +19,7 @@ DATA_SETTINGS = [DATA, SCRIPT_NAME]
 SEED = 40
 RNG = np.random.default_rng(SEED)
 EVOLUTION_CONFIG = {
-    "generations": 20,
+    "generations": 2,
     "population_size": 10,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
@@ -28,11 +28,12 @@ EVOLUTION_CONFIG = {
     "checkpoint_folder": f"Twisty_testing/checkpoints/experiment_1",
     "checkpoint_gen": 5, # which generation to load from.
     "start_id": 91, # if old graph data should be kept, make it some higher number.
-    "twisty_evo": False,
+    "twisty_evo": True,
     "p_twisty": 0.5,
 }
 # if correcting for bounding box, the height will be reduced to zero. Otherwise choose a custom z value for the height.
 EVAL_CONFIG = {"correct_for_bounding_box": True, "custom_z": 0.39, "custom_xy": [0, 0] ,"target_pos": [0, 5, 0.5], "brain_type": "sf_cpg", "num_modules": 10}
+
 
 def run_evolution_experiment(
     generations: int = EVOLUTION_CONFIG['generations'],
@@ -207,7 +208,7 @@ def main() -> None:
         mode="launcher"
     )
     if history:
-        show_qpos_history(history)
+        show_xpos_history(history)
 
 if __name__ == "__main__":
     # Test several times

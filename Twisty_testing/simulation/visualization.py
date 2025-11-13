@@ -14,6 +14,7 @@ from typing import Any
 from mujoco import viewer
 import mujoco
 import numpy as np
+import mujoco as mj
 console = Console()
 SEED = 40
 RNG = np.random.default_rng(SEED)
@@ -85,27 +86,283 @@ def visualize_champ(robot: CoreModule, individual: Individual, correct_for_bound
 
     return history
 
+def show_xpos_history(
+    history: list[float],
+    spawn_position: list[float],
+    target_position: list[float],
+    *,
+    save: bool = True,
+    show: bool = True,
+) -> None:
+    # Initialize world to get the background
+    mj.set_mjcb_control(None)
+    world = OlympicArena(
+        load_precompiled=False,
+    )
 
-def show_qpos_history(history: list[list[float]]) -> None:
-    pos_data = np.array(history, dtype=float)
-    if pos_data.ndim != 2 or pos_data.shape[1] < 2:
-        console.log("[red]History format invalid for plotting.")
-        return
-    # Drop non-finite rows to avoid plotting NaNs
-    pos_data = pos_data[np.isfinite(pos_data).all(axis=1)]
-    if pos_data.size == 0:
-        console.log("[yellow]No finite samples to plot.")
-        return
-    plt.figure(figsize=(10, 6))
-    plt.plot(pos_data[:, 0], pos_data[:, 1], "b-", label="Path")
-    plt.plot(pos_data[0, 0], pos_data[0, 1], "go", label="Start")
-    plt.plot(pos_data[-1, 0], pos_data[-1, 1], "ro", label="End")
-    plt.xlabel("X Position")
-    plt.ylabel("Y Position")
+    # Add some objects to the world
+    start_sphere = r"""
+    <mujoco>
+        <worldbody>
+            <geom name="green_sphere"
+            size=".1"
+            rgba="0 1 0 1"/>
+        </worldbody>
+    </mujoco>
+    """
+    end_sphere = r"""
+    <mujoco>
+        <worldbody>
+            <geom name="red_sphere"
+            size=".1"
+            rgba="1 0 0 1"/>
+        </worldbody>
+    </mujoco>
+    """
+    target_box = r"""
+    <mujoco>
+        <worldbody>
+            <geom name="magenta_box"
+                size=".1 .1 .1"
+                type="box"
+                rgba="1 0 1 0.75"/>
+        </worldbody>
+    </mujoco>
+    """
+    spawn_box = r"""
+    <mujoco>
+        <worldbody>
+            <geom name="gray_box"
+            size=".1 .1 .1"
+            type="box"
+            rgba="0.5 0.5 0.5 0.5"/>
+        </worldbody>
+    </mujoco>
+    """
+    # Convert list of [x,y,z] positions to numpy array
+    pos_data = np.array(history)
+
+    # Starting point of robot
+    adjustment = np.array((0, 0, target_position[2] + 1))
+    world.spawn(
+        mj.MjSpec.from_string(start_sphere),
+        position=pos_data[0] + (adjustment * 1.5),
+        correct_collision_with_floor=False,
+    )
+
+    # End point of robot
+    world.spawn(
+        mj.MjSpec.from_string(end_sphere),
+        position=pos_data[-1] + (adjustment * 2),
+        correct_collision_with_floor=False,
+    )
+
+    # Target position
+    world.spawn(
+        mj.MjSpec.from_string(target_box),
+        position=target_position + adjustment,
+        correct_collision_with_floor=False,
+    )
+
+    # Spawn position of robot
+    world.spawn(
+        mj.MjSpec.from_string(spawn_box),
+        position=spawn_position,
+        correct_collision_with_floor=False,
+    )
+
+    # Draw the path of the robot
+    smooth = np.linspace(0, 1, len(pos_data))
+    inv_smooth = 1 - smooth
+    smooth_rise = np.linspace(1.25, 1.95, len(pos_data))
+    for i in range(1, len(pos_data)):
+        # Get the two points to draw the distance between
+        pos_i = pos_data[i]
+        pos_j = pos_data[i - 1]
+
+        # Size of the box to represent the distance
+        distance = pos_i - pos_j
+        minimum_size = 0.05
+        geom_size = np.array([
+            max(abs(distance[0]) / 2, minimum_size),
+            max(abs(distance[1]) / 2, minimum_size),
+            max(abs(distance[2]) / 2, minimum_size),
+        ])
+        geom_size_str: str = f"{geom_size[0]} {geom_size[1]} {geom_size[2]}"
+
+        # Position the box in the middle of the two points
+        half_way_point = (pos_i + pos_j) / 2
+        geom_pos_str = (
+            f"{half_way_point[0]} {half_way_point[1]} {half_way_point[2]}"
+        )
+
+        # Smooth color transition from green to red
+        geom_rgba = f"{smooth[i]} {inv_smooth[i]} 0 0.75"
+        path_box = rf"""
+        <mujoco>
+            <worldbody>
+                <geom name="yellow_sphere"
+                    type="box"
+                    pos="{geom_pos_str}"
+                    size="{geom_size_str}"
+                    rgba="{geom_rgba}"
+                />
+            </worldbody>
+        </mujoco>
+        """
+        world.spawn(
+            mj.MjSpec.from_string(path_box),
+            position=(adjustment * smooth_rise[i]),
+            correct_collision_with_floor=False,
+        )
+
+    # Setup the plot
+    _, ax = plt.subplots()
+
+    # Add legend to the plot
+    plt.rc("legend", fontsize="small")
+    red_patch = mpatches.Patch(color="red", label="End Position")
+    gray_patch = mpatches.Patch(color="gray", label="Spawn Position")
+    green_patch = mpatches.Patch(color="green", label="Start Position")
+    magenta_patch = mpatches.Patch(color="magenta", label="Target Position")
+    yellow_patch = mpatches.Patch(color="yellow", label="Robot Path")
+    ax.legend(
+        handles=[
+            green_patch,
+            red_patch,
+            magenta_patch,
+            gray_patch,
+            yellow_patch,
+        ],
+        loc="upper left",
+        bbox_to_anchor=(1.05, 1),
+    )
+
+    # Add labels and title
+    ax.set_xlabel("Y Position")
+    ax.set_ylabel("X Position")
+    ax.get_xaxis().set_ticks([])
+    ax.get_yaxis().set_ticks([])
+
+    # Title
     plt.title("Robot Path in XY Plane")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
+
+    # Render the background image
+    model = world.spec.compile()
+    data = mj.MjData(model)
+    save_path = str(DATA / "background.png")
+    single_frame_renderer(
+        model,
+        data,
+        save_path=save_path,
+        save=True,
+        width=200,
+        height=600,
+        cam_fovy=8,
+        cam_pos=[2.1, 0, 50],
+        cam_quat=[-0.7071, 0, 0, 0.7071],
+    )
+
+    # Setup background image
+    img = plt.imread(save_path)
+    ax.imshow(img)
+
+    # Save the figure
+    if save:
+        fig_path = DATA / "robot_path.png"
+        plt.savefig(fig_path, bbox_inches="tight", dpi=300)
+
+    # Show results
+    if show:
+        plt.show()
+# def show_xpos_history(history: list[float]) -> None:
+#     # Create a tracking camera
+#     camera = mj.MjvCamera()
+#     camera.type = mj.mjtCamera.mjCAMERA_FREE
+#     camera.lookat = [2.5, 0, 0]
+#     camera.distance = 10
+#     camera.azimuth = 0
+#     camera.elevation = -90
+
+#     # Initialize world to get the background
+#     mj.set_mjcb_control(None)
+#     world = SimpleFlatWorld()
+#     model = world.spec.compile()
+#     data = mj.MjData(model)
+#     save_path = str(DATA / "background.png")
+#     single_frame_renderer(
+#         model,
+#         data,
+#         save_path=save_path,
+#         save=True,
+#     )
+
+#     # Setup background image
+#     img = plt.imread(save_path)
+#     _, ax = plt.subplots()
+#     ax.imshow(img)
+#     w, h, _ = img.shape
+
+#     # Convert list of [x,y,z] positions to numpy array
+#     pos_data = np.array(history)
+
+#     # Calculate initial position
+#     x0, y0 = int(h * 0.483), int(w * 0.815)
+#     xc, yc = int(h * 0.483), int(w * 0.9205)
+#     ym0, ymc = 0, custom_xy[0]
+
+#     # Convert position data to pixel coordinates
+#     pixel_to_dist = -((ymc - ym0) / (yc - y0))
+#     pos_data_pixel = [[xc, yc]]
+#     for i in range(len(pos_data) - 1):
+#         xi, yi, _ = pos_data[i]
+#         xj, yj, _ = pos_data[i + 1]
+#         xd, yd = (xj - xi) / pixel_to_dist, (yj - yi) / pixel_to_dist
+#         xn, yn = pos_data_pixel[i]
+#         pos_data_pixel.append([xn + int(xd), yn + int(yd)])
+#     pos_data_pixel = np.array(pos_data_pixel)
+
+#     # Plot x,y trajectory
+#     ax.plot(x0, y0, "kx", label="[0, 0, 0]")
+#     ax.plot(xc, yc, "go", label="Start")
+#     ax.plot(pos_data_pixel[:, 0], pos_data_pixel[:, 1], "b-", label="Path")
+#     ax.plot(pos_data_pixel[-1, 0], pos_data_pixel[-1, 1], "ro", label="End")
+
+#     # Add labels and title
+#     ax.set_xlabel("X Position")
+#     ax.set_ylabel("Y Position")
+#     ax.legend()
+
+#     # Title
+#     plt.title("Robot Path in XY Plane")
+
+#     # Show results
+#     plt.savefig(DATA / "robot_path.png")
+#     print("trajectory plot saved")
+
+
+
+
+# def show_qpos_history(history: list[list[float]]) -> None:
+#     pos_data = np.array(history, dtype=float)
+#     if pos_data.ndim != 2 or pos_data.shape[1] < 2:
+#         console.log("[red]History format invalid for plotting.")
+#         return
+#     # Drop non-finite rows to avoid plotting NaNs
+#     pos_data = pos_data[np.isfinite(pos_data).all(axis=1)]
+#     if pos_data.size == 0:
+#         console.log("[yellow]No finite samples to plot.")
+#         return
+#     plt.figure(figsize=(10, 6))
+#     plt.plot(pos_data[:, 0], pos_data[:, 1], "b-", label="Path")
+#     plt.plot(pos_data[0, 0], pos_data[0, 1], "go", label="Start")
+#     plt.plot(pos_data[-1, 0], pos_data[-1, 1], "ro", label="End")
+#     plt.xlabel("X Position")
+#     plt.ylabel("Y Position")
+#     plt.title("Robot Path in XY Plane")
+#     plt.legend()
+#     plt.grid(True)
+#     plt.show()
 
 
 def plot_fitness_over_generations(
