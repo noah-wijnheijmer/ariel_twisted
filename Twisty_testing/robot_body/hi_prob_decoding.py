@@ -34,7 +34,7 @@ from networkx.readwrite import json_graph
 
 # Local libraries
 from ariel import log
-from ariel.body_phenotypes.robogen_lite.config import (
+from robot_body.body_config import (
     ALLOWED_FACES,
     ALLOWED_ROTATIONS,
     IDX_OF_CORE,
