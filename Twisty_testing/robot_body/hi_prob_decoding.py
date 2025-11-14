@@ -246,6 +246,8 @@ class HighProbabilityDecoder:
             for face in disallowed_faces:
                 # Disable as parent
                 self.conn_p_space[module_idx, :, face.value] = 0.0
+                # Disable as child
+                self.conn_p_space[:, module_idx, face.value] = 0.0
 
             # Constrain rotations based on module type
             allowed_rotations = set(ALLOWED_ROTATIONS[module_type])

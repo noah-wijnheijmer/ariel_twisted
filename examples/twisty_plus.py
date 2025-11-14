@@ -33,7 +33,8 @@ Todo
 # Standard library
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-
+import numpy as np
+import matplotlib.pyplot as plt
 # Third-party libraries
 import json
 import mujoco
@@ -51,12 +52,10 @@ from ariel.body_phenotypes.robogen_lite.constructor import (
     construct_mjspec_from_graph
 )
 from ariel.body_phenotypes.robogen_lite.decoders.hi_prob_decoding import (
-    HighProbabilityDecoder, save_graph_as_json
+    HighProbabilityDecoder, save_graph_as_json, load_graph_from_json
 )
 from ariel.body_phenotypes.robogen_lite.modules.core import CoreModule
-from ariel.simulation.controllers.na_cpg import (
-    NaCPG, create_fully_connected_adjacency
-)
+from ariel.simulation.controllers.sf_cpg import CPGSensoryFeedback, sf_policy
 from ariel.simulation.environments._simple_flat import SimpleFlatWorld
 # from ariel.simulation.environments import OlympicArena
 # from ariel.simulation.environments import OlympicArena
@@ -809,21 +808,97 @@ def run_evolution_experiment(
     
     return champion, experiment_data
 
+def plot_fitness_over_generations(
+    experiment_data: dict[str, Any],
+    population_name: str = "mixed_twisty"
+) -> None:
+    """Plot fitness over generations showing max, average, and min values.
+
+    Args:
+        experiment_data: Dictionary containing generation statistics
+            from the experiment
+        population_name: Name of the population key in the data
+            (e.g., "mixed_twisty", "twisty", "non_twisty")
+    """
+    if (
+        "generations" not in experiment_data
+        or len(experiment_data["generations"]) == 0
+    ):
+        console.log("No generation data found in experiment data.")
+        return
+
+    generations = []
+    max_fitness = []
+    avg_fitness = []
+    min_fitness = []
+
+    for gen_data in experiment_data["generations"]:
+        generations.append(gen_data["generation"])
+
+        # Check if the population_name exists in this generation
+        if population_name in gen_data:
+            stats = gen_data[population_name]
+            max_fitness.append(stats["max"])
+            avg_fitness.append(stats["mean"])
+            min_fitness.append(stats["min"])
+        else:
+            msg = (
+                f"Population '{population_name}' "
+                f"not found in generation {gen_data['generation']}"
+            )
+            console.log(msg)
+            return
+
+    # Create the plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(
+        generations, max_fitness, "b-",
+        marker="o", markersize=4, label="Max", linewidth=2,
+    )
+    plt.plot(
+        generations, avg_fitness, "purple",
+        marker="s", markersize=3, label="Average", linewidth=2,
+    )
+    plt.plot(
+        generations, min_fitness, "gray",
+        marker="^", markersize=3, label="Min", linewidth=1.5,
+    )
+    population_name = "twisty"
+    plt.xlabel("Generation No.", fontsize=12)
+    plt.ylabel("Fitness", fontsize=12)
+    title = f"Fitness over Generations - {population_name.replace('_', ' ').title()}"
+    plt.title(title, fontsize=14)
+    plt.legend(loc="upper left", fontsize=10)
+    plt.grid(visible=True, alpha=0.3)
+    
+    # I force integer ticks on x-axis (half generations don't make sense to me)
+    plt.gca().xaxis.set_major_locator(plt.MaxNLocator(integer=True)) # type: ignore
+    
+    plt.tight_layout()
+    plt.show()
 
 def main() -> None:
     """Entry point for evolutionary experiment."""
-    champion, _ = run_evolution_experiment() #You can set some experimental variables here or all the way above in EVOLUTION_CONFIG
-    
+    filename = f"champ_graph_normal.json"
+    graph = load_graph_from_json(DATA / filename)
+    data_file = "experiment_data_twisty_champion.json"
+    load_data = DATA / data_file 
     # Visualize the champion robot - change mode here!
     console.log("\n🏆 Visualizing champion robot...")
-    champion_robot = construct_mjspec_from_graph(champion.graph)
-    
+    champion_robot = construct_mjspec_from_graph(graph)
+    brain_filename = "champ_brain_normal.json"
+    load_file = DATA / brain_filename
+    with Path(load_file).open("r", encoding="utf-8") as f:
+        brain = json.load(f) 
+    with Path(load_data).open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    plot_fitness_over_generations(data, "mixed_twisty")
     # Change mode to "launcher" to see robot in interactive viewer
     # Change mode to "video" to record a video
-    run(champion_robot, champion, mode="launcher")
+    run(champion_robot, brain, mode="video")
 
 
-def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None: #Visualizes the champion robot after evolution
+def run(robot: CoreModule, brain,  mode: str = "video") -> None: #Visualizes the champion robot after evolution
     """Entry point."""
     # BugFix -> "Python exception raised"
     mujoco.set_mjcb_control(None)
@@ -855,12 +930,9 @@ def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None:
 
     # Actuators and CPG
     mujoco.set_mjcb_control(None)
-    adj_dict = create_fully_connected_adjacency(model.nu)
-    cpg = NaCPG(adj_dict, angle_tracking=True)
+    weights = brain
+    cpg = CPGSensoryFeedback(num_neurons=int(model.nu), sensory_term=0.0, _lambda=0.01, coupling_weights=weights)
     cpg.reset()
-    gen = cpg.get_flat_params()
-    # add brain genotype to the individual
-    individual.brain_genotype = gen
 
     # Initialize robot tracker
     mujoco_type_to_find = mujoco.mjtObj.mjOBJ_GEOM
@@ -891,7 +963,7 @@ def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None:
 
     # Initialize controller
     ctrl = Controller(
-        controller_callback_function=policy,
+        controller_callback_function=sf_policy,
         time_steps_per_ctrl_step=1,
         tracker=tracker,
     )
@@ -941,21 +1013,6 @@ def run(robot: CoreModule, individual: Individual, mode: str = "video") -> None:
             console.log(f"Mode '{mode}' not recognized. No simulation run.")
 
     # return fitness_function(tracker.history["xpos"])
-
-def policy(
-    model: mujoco.MjModel,  # noqa: ARG001
-    data: mujoco.MjData,
-    cpg: NaCPG,
-) -> np.ndarray:
-    """Use feedback term to shift the output of the CPGs and return control array."""
-    angles = cpg.forward()
-    # ctrl_values = angles
-    # data.ctrl = ctrl_values
-    
-    #--------------------------
-    # data.ctrl = cpg.forward()
-    #--------------------------
-    return angles
 
 
 if __name__ == "__main__":

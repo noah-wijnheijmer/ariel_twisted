@@ -27,7 +27,6 @@ def evolve_generation(population: list[Individual],
     population.sort(key=lambda ind: ind.fitness, reverse=True)
     for ind in population:
         fitnesses.append(ind.fitness)
-    print(max(fitnesses))
     # Next generation
     new_population = []
     # Elitism - keep best individual(s)

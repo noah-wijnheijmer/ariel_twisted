@@ -8,6 +8,7 @@ from rich.console import Console
 import numpy as np
 from typing import Any
 from pathlib import Path
+import json
 
 console = Console()
 # Global constants
@@ -19,8 +20,8 @@ DATA_SETTINGS = [DATA, SCRIPT_NAME]
 SEED = 40
 RNG = np.random.default_rng(SEED)
 EVOLUTION_CONFIG = {
-    "generations": 20,
-    "population_size": 10,
+    "generations": 150,
+    "population_size": 100,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
     "checkpoint_every": 1,  # Save checkpoint every N generations
@@ -28,7 +29,7 @@ EVOLUTION_CONFIG = {
     "checkpoint_folder": f"Twisty_testing/checkpoints/experiment_1",
     "checkpoint_gen": 5, # which generation to load from.
     "start_id": 91, # if old graph data should be kept, make it some higher number.
-    "twisty_evo": False,
+    "twisty_evo": True,
     "p_twisty": 0.5,
 }
 # if correcting for bounding box, the height will be reduced to zero. Otherwise choose a custom z value for the height.
@@ -97,8 +98,7 @@ def run_evolution_experiment(
         evaluate_population(population, EVAL_CONFIG["correct_for_bounding_box"], EVAL_CONFIG["custom_z"], EVAL_CONFIG["custom_xy"] ,EVAL_CONFIG["target_pos"], EVAL_CONFIG["brain_type"])
 
         # Track best individuals this generation
-        current_best_non_twisty = max(population, key=lambda x: x.fitness)
-        print(current_best_non_twisty.fitness)    
+        current_best_non_twisty = max(population, key=lambda x: x.fitness)   
         if current_best_non_twisty.fitness > best_non_twisty_fitness:
             best_non_twisty_ever = current_best_non_twisty
             best_non_twisty_fitness = current_best_non_twisty.fitness
@@ -183,6 +183,13 @@ def run_evolution_experiment(
 
     # Save champion graph to file
     champion_filename = f"champion_{champion_type.lower()}_robot.json"
+    brain = champion.brain_genotype
+    filename = "champ_brain.json"
+
+    # Open the file in write mode and save the data
+    with open(DATA/filename, 'w') as file:
+        json.dump(brain, file)
+
     save_graph_as_json(champion.graph, DATA / champion_filename)
     console.log(f"📋 Champion robot saved to: {DATA / champion_filename}")
     
