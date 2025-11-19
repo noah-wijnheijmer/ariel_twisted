@@ -32,23 +32,34 @@ RNG = np.random.default_rng(SEED)
 # -- HYPERPARAMETERS --- #
 HIDDEN_LAYERS = [32]
 STARTING_POSITION = [0, 0, 0.1]
+EVAL_COUNTER = 0
+OPTIMIZER_NAME = "cma"
+BUDGET = 5000
+NUM_WORKERS = 1
 
-def fitness_function_basic(history: list[float]) -> float:
-    # move forward, direction got trail and errored
-    
-    _, ys, _ = STARTING_POSITION.copy()
-    _, ye, _ = history[-1]
+
+def _set_brain_parameters(brain: RobotBrain, params: npt.ArrayLike) -> None:
+    """Apply a flat parameter vector (or Nevergrad container) to the brain."""
+    vector = getattr(params, "value", params)
+    brain.set_weights_from_vector(np.asarray(vector, dtype=np.float32))
+
+def fitness_function_basic(history: list[npt.NDArray[np.float64]]) -> float:
+    """Reward forward motion along the gecko's primary (Y) axis."""
+    ys = history[0][1]
+    ye = history[-1][1]
 
     # maximize the distance
-    y_distance = np.abs(ys - ye) # negative y distance = forward movement
+    y_distance = np.abs(ys - ye)  # negative delta corresponds to forward motion
     return y_distance
 
 
-def run(params: list[int], brain: RobotBrain, mode: str ="simple") -> None:
+def run(params: npt.ArrayLike, brain: RobotBrain, mode: str ="simple") -> None:
     """Main function to run the simulation with random movements."""
 
     # Initialise controller to controller to None, always in the beginning.
     mj.set_mjcb_control(None)  # DO NOT REMOVE
+
+    _set_brain_parameters(brain, params)
 
     # Initialise world
     # Import environments from ariel.simulation.environments
@@ -116,6 +127,9 @@ def run(params: list[int], brain: RobotBrain, mode: str ="simple") -> None:
     history  = tracker.history["xpos"][0]  # Get history of the first tracked object
 
     fitness = fitness_function_basic(history)
+    global EVAL_COUNTER
+    EVAL_COUNTER += 1
+    print(f"[Eval {EVAL_COUNTER}] Fitness: {fitness:.4f}")
 
     return -fitness
 
@@ -140,16 +154,28 @@ def main():
         hidden_layers=HIDDEN_LAYERS,
     )
 
-    num_params = len(brain.get_weights_as_vector())
-    param = ng.p.Array(shape=(num_params,))
+    initial_weights = brain.get_weights_as_vector().astype(np.float32)
+    param = ng.p.Array(init=initial_weights.copy())
+
+    def _make_optimizer():
+        name = OPTIMIZER_NAME.lower()
+        common_kwargs = dict(parametrization=param, budget=BUDGET, num_workers=NUM_WORKERS)
+        if name == "cma":
+            return ng.optimizers.CMA(**common_kwargs)
+        if name in {"oneplusone", "1+1"}:
+            return ng.optimizers.ParametrizedOnePlusOne(**common_kwargs)
+        if name == "tbpsa":
+            return ng.optimizers.TBPSA(**common_kwargs)
+        return ng.optimizers.NGOpt(**common_kwargs)
 
     start_time = time.time()
-    optimizer = ng.optimizers.NGOpt(parametrization=param, budget=5000, num_workers=1)
+    optimizer = _make_optimizer()
 
     print("Starting optimization...")
     best_brain = optimizer.minimize(lambda x: run(params=x, brain=brain, mode="simple"))
     print(f"Optimization setup took {time.time() - start_time:.2f} seconds.")
 
+    print("Replaying best brain in video mode...")
     run(params=best_brain.value, brain=brain, mode="video")
 
 
