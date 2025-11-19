@@ -48,7 +48,7 @@ class RobotBrain(nn.Module):
         
         for hidden_size in hidden_layers:
             layers.append(weight_norm(nn.Linear(prev_size, hidden_size)))
-            layers.append(nn.ReLU())
+            layers.append(nn.ELU())
             prev_size = hidden_size
         
         # Output layer

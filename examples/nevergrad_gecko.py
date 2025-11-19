@@ -1,6 +1,6 @@
 # Third-party libraries
 import time
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import mujoco as mj
 import numpy as np
 import numpy.typing as npt
@@ -14,7 +14,7 @@ from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
 
 # Local libraries
 # from ariel.utils.renderers import video_renderer
-from ariel.utils.renderers import video_renderer
+from ariel.utils.renderers import video_renderer, tracking_video_renderer
 from ariel.utils.runners import simple_runner
 from ariel.utils.video_recorder import VideoRecorder
 from twisty_src.twisty_brain import RobotBrain
@@ -30,11 +30,11 @@ SEED = 42
 RNG = np.random.default_rng(SEED)
 
 # -- HYPERPARAMETERS --- #
-HIDDEN_LAYERS = [32]
+HIDDEN_LAYERS = [32, 32, 32]
 STARTING_POSITION = [0, 0, 0.1]
 EVAL_COUNTER = 0
 OPTIMIZER_NAME = "cma"
-BUDGET = 5000
+BUDGET = 40
 NUM_WORKERS = 1
 
 
@@ -43,15 +43,23 @@ def _set_brain_parameters(brain: RobotBrain, params: npt.ArrayLike) -> None:
     vector = getattr(params, "value", params)
     brain.set_weights_from_vector(np.asarray(vector, dtype=np.float32))
 
+# def fitness_function_basic(history: list[npt.NDArray[np.float64]]) -> float:
+#     """Reward forward motion along the gecko's primary (Y) axis."""
+#     ys = history[0][1]
+#     ye = history[-1][1]
+
+#     # maximize the distance
+#     y_distance = np.abs(ys - ye)  # negative delta corresponds to forward motion
+#     return y_distance
+
 def fitness_function_basic(history: list[npt.NDArray[np.float64]]) -> float:
     """Reward forward motion along the gecko's primary (Y) axis."""
     ys = history[0][1]
     ye = history[-1][1]
 
     # maximize the distance
-    y_distance = np.abs(ys - ye)  # negative delta corresponds to forward motion
+    y_distance = ys - ye  # negative delta corresponds to forward motion
     return y_distance
-
 
 def run(params: npt.ArrayLike, brain: RobotBrain, mode: str ="simple") -> None:
     """Main function to run the simulation with random movements."""
@@ -113,9 +121,9 @@ def run(params: npt.ArrayLike, brain: RobotBrain, mode: str ="simple") -> None:
             video_recorder = VideoRecorder(output_folder=PATH_TO_VIDEO_FOLDER)
 
             # Render with video recorder
-            video_renderer(
-                model,
-                data,
+            tracking_video_renderer(
+                model=model,
+                data=data,
                 duration=30,
                 video_recorder=video_recorder,
             )
@@ -156,7 +164,7 @@ def main():
 
     initial_weights = brain.get_weights_as_vector().astype(np.float32)
     param = ng.p.Array(init=initial_weights.copy())
-
+    
     def _make_optimizer():
         name = OPTIMIZER_NAME.lower()
         common_kwargs = dict(parametrization=param, budget=BUDGET, num_workers=NUM_WORKERS)
@@ -173,7 +181,7 @@ def main():
 
     print("Starting optimization...")
     best_brain = optimizer.minimize(lambda x: run(params=x, brain=brain, mode="simple"))
-    print(f"Optimization setup took {time.time() - start_time:.2f} seconds.")
+    print(f"Optimization setup took {(time.time() - start_time)/60:.2f} minutes.")
 
     print("Replaying best brain in video mode...")
     run(params=best_brain.value, brain=brain, mode="video")
