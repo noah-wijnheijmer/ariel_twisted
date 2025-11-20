@@ -45,11 +45,11 @@ def gecko() -> CoreModule:
     fl_leg = HingeModule(
         index=5,
     )
-    fl_leg.rotate(90)
+    fl_leg.rotate(-45)
     fl_leg2 = HingeModule(
         index=15,
     )
-    fl_leg2.rotate(90)
+    fl_leg2.rotate(45)
 
     fl_flipper = BrickModule(
         index=6,
@@ -58,11 +58,11 @@ def gecko() -> CoreModule:
     fr_leg = HingeModule(
         index=7,
     )
-    fr_leg.rotate(90)
+    fr_leg.rotate(-45)
     fr_leg2 = HingeModule(
         index=17,
     )
-    fr_leg2.rotate(90)
+    fr_leg2.rotate(45)
 
     fr_flipper = BrickModule(
         index=8,
@@ -70,7 +70,7 @@ def gecko() -> CoreModule:
     bl_leg = HingeModule(
         index=9,
     )
-    bl_leg.rotate(45)
+    bl_leg.rotate(-45)
     bl_flipper = BrickModule(
         index=10,
     )

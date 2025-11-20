@@ -14,10 +14,9 @@ def gecko() -> CoreModule:
 
     Body Description
     ---------
-    The gecko body consists of a core module, 4 legs (flippers), a neck and a
-    spine. For better mobility the front two flippers have 2 hinges (joints),
-    each rotated 90 degrees to each other. Additionally, the back two flippers
-    are rotated 45 degrees compared to the body, to encourage forward movement.
+    two of the same front flippers, two different back legs, all twisty
+
+
 
     Returns
     -------
@@ -45,11 +44,11 @@ def gecko() -> CoreModule:
     fl_leg = HingeModule(
         index=5,
     )
-    fl_leg.rotate(90)
+    fl_leg.rotate(45)
     fl_leg2 = HingeModule(
         index=15,
     )
-    fl_leg2.rotate(90)
+    fl_leg2.rotate(45)
 
     fl_flipper = BrickModule(
         index=6,
@@ -58,11 +57,11 @@ def gecko() -> CoreModule:
     fr_leg = HingeModule(
         index=7,
     )
-    fr_leg.rotate(90)
+    fr_leg.rotate(45)
     fr_leg2 = HingeModule(
         index=17,
     )
-    fr_leg2.rotate(90)
+    fr_leg2.rotate(45)
 
     fr_flipper = BrickModule(
         index=8,

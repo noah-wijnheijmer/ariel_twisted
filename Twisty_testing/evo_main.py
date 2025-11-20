@@ -20,7 +20,7 @@ DATA_SETTINGS = [DATA, SCRIPT_NAME]
 SEED = 40
 RNG = np.random.default_rng(SEED)
 EVOLUTION_CONFIG = {
-    "generations": 15,
+    "generations": 20,
     "population_size": 10,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
