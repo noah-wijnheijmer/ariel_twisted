@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from mujoco import viewer
 import nevergrad as ng
+import matplotlib.pyplot as plt
 
 
 # import prebuilt robot phenotypes
@@ -33,9 +34,10 @@ RNG = np.random.default_rng(SEED)
 HIDDEN_LAYERS = [32, 32, 32]
 STARTING_POSITION = [0, 0, 0.1]
 EVAL_COUNTER = 0
-OPTIMIZER_NAME = "cma"
-BUDGET = 40
+OPTIMIZER_NAME = "cma"  # Options: "CMA", "1+1", "TBPSA", "NGOpt"
+BUDGET = 5000
 NUM_WORKERS = 1
+
 
 
 def _set_brain_parameters(brain: RobotBrain, params: npt.ArrayLike) -> None:
@@ -180,8 +182,34 @@ def main():
     optimizer = _make_optimizer()
 
     print("Starting optimization...")
-    best_brain = optimizer.minimize(lambda x: run(params=x, brain=brain, mode="simple"))
+
+    # Store history
+    fitness_history = []
+
+    try:
+        cumulative_fitness = 0.0
+        for i in range(optimizer.budget):
+            x = optimizer.ask()
+            fitness = run(params=x.value, brain=brain, mode="simple")
+            optimizer.tell(x, fitness)
+            cumulative_fitness -= fitness
+            if (i + 1) % 100 == 0:
+                avg_fitness = cumulative_fitness / 100
+                print(f"Iteration {i + 1}, Average Fitness over last 100 evaluations: {avg_fitness:.4f}")
+                cumulative_fitness = 0.0
+                fitness_history.append(avg_fitness)
+    except KeyboardInterrupt:
+        print("Optimization interrupted by user.")
+    
+    best_brain = optimizer.provide_recommendation()
     print(f"Optimization setup took {(time.time() - start_time)/60:.2f} minutes.")
+
+    # Plot curve
+    plt.plot(fitness_history)
+    plt.xlabel("Iteration")
+    plt.ylabel("Fitness")
+    plt.title(f"{OPTIMIZER_NAME} Optimization History")
+    plt.show()
 
     print("Replaying best brain in video mode...")
     run(params=best_brain.value, brain=brain, mode="video")
