@@ -1,5 +1,5 @@
 from ea_components.individual import Individual
-from ea_components.selection import tournament_selection
+from ea_components.selection import tournament_selection, exponantial_rank_selection
 from ea_components.reproduction import crossover_individuals, mutate_individual
 import numpy as np
 
@@ -41,8 +41,8 @@ def evolve_generation(population: list[Individual],
     while len(new_population) < len(population):
         if RNG.random() < crossover_rate:
             # Crossover: select two parents and create offspring
-            parent1 = tournament_selection(population)
-            parent2 = tournament_selection(population)
+            parent1 = exponantial_rank_selection(population)
+            parent2 = exponantial_rank_selection(population)
             child = crossover_individuals(parent1, parent2, id=i)
             
             # Apply mutation to crossover offspring (optional but recommended)
@@ -50,7 +50,7 @@ def evolve_generation(population: list[Individual],
                 child = mutate_individual(individual=child, id=i, mutation_rate=mutation_rate)  # Lower mutation rate for crossover offspring
         else:
             # Mutation only: select one parent and mutate
-            parent = tournament_selection(population)
+            parent = exponantial_rank_selection(population)
             child = mutate_individual(individual=parent, id=i, mutation_rate=mutation_rate )
         child.id = i
         new_population.append(child)
