@@ -1,0 +1,16 @@
+nevergrad_gecko:
+baseline parameters
+SEED = 42
+HIDDEN_LAYERS = [32, 32, 32]
+STARTING_POSITION = [0, 0, 0.1]
+OPTIMIZER_NAME = "cma"
+BUDGET = 5000
+NUM_WORKERS = 1
+
+run experiments on:
+gecko 3 repetitions
+gecko_untwisted 3 repetitions
+gecko_good 3 repetitions
+gecko_front 3 repetitions
+gecko_doubletwist 3 repetitions
+gecko_doubletwist_turtle 3 repetitions
