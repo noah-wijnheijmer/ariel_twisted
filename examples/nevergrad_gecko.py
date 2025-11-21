@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 
 # import prebuilt robot phenotypes
-from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko import gecko
+from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_good import gecko
 from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
 
 # Local libraries
@@ -35,7 +35,7 @@ HIDDEN_LAYERS = [32, 32, 32]
 STARTING_POSITION = [0, 0, 0.1]
 EVAL_COUNTER = 0
 OPTIMIZER_NAME = "cma"  # Options: "CMA", "1+1", "TBPSA", "NGOpt"
-BUDGET = 5000
+BUDGET = 1000
 NUM_WORKERS = 1
 
 
