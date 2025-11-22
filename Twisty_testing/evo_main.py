@@ -1,4 +1,5 @@
 from ea_components.individual import Individual, create_individual, evaluate_population
+from ea_components.selection import survivor_selection
 from ea_components.evolution.evolution import evolve_generation
 from robot_body.constructor import construct_mjspec_from_graph
 from robot_body.hi_prob_decoding import save_graph_as_json
@@ -94,8 +95,6 @@ def run_evolution_experiment(
         if generation % int(EVOLUTION_CONFIG["checkpoint_every"]) == 0:
             save_checkpoint(generation_id=generation, population=population, folder_path="Twisty_testing/checkpoints/experiment_1", config=EVOLUTION_CONFIG)
         console.log(f"\n--- Generation {generation + 1} ---")
-        console.log("Evaluating non-twisty population...")
-        evaluate_population(population, EVAL_CONFIG["correct_for_bounding_box"], EVAL_CONFIG["custom_z"], EVAL_CONFIG["custom_xy"] ,EVAL_CONFIG["target_pos"], EVAL_CONFIG["brain_type"])
 
         # Track best individuals this generation
         current_best_non_twisty = max(population, key=lambda x: x.fitness)   
@@ -161,10 +160,13 @@ def run_evolution_experiment(
         # Evolve populations (except for last generation)
         if generation < generations - 1:
             if EVOLUTION_CONFIG["load_checkpoint"] is True:
-                population = evolve_generation(population, id=start_id)
+                next_gen = evolve_generation(population, id=start_id)
                 start_id = -1
             else:
-                population = evolve_generation(population)
+                next_gen = evolve_generation(population)
+            console.log("Evaluating population...")
+            evaluate_population(next_gen, EVAL_CONFIG["correct_for_bounding_box"], EVAL_CONFIG["custom_z"], EVAL_CONFIG["custom_xy"] ,EVAL_CONFIG["target_pos"], EVAL_CONFIG["brain_type"])
+            population = survivor_selection(next_gen, population_size)
 
     champion = best_non_twisty_ever
     if champion.twisty is True:

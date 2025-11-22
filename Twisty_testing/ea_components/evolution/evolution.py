@@ -22,15 +22,11 @@ def evolve_generation(population: list[Individual],
     Returns:
         New evolved population
     """
-    # Sort by fitness for elitism
-    fitnesses = []
     population.sort(key=lambda ind: ind.fitness, reverse=True)
-    for ind in population:
-        fitnesses.append(ind.fitness)
     # Next generation
-    new_population = []
+    offsprings = []
     # Elitism - keep best individual(s)
-    new_population.extend(population[:elitism])
+    offsprings.extend(population[:elitism])
     ids = []
     for individual in population:
         ids.append(individual.id)
@@ -38,7 +34,7 @@ def evolve_generation(population: list[Individual],
     if id != -1:
         i = id
     # Generate offspring through crossover and mutation
-    while len(new_population) < len(population):
+    while len(offsprings) < 3 * len(population):
         if RNG.random() < crossover_rate:
             # Crossover: select two parents and create offspring
             parent1 = exponantial_rank_selection(population)
@@ -53,7 +49,6 @@ def evolve_generation(population: list[Individual],
             parent = exponantial_rank_selection(population)
             child = mutate_individual(individual=parent, id=i, mutation_rate=mutation_rate )
         child.id = i
-        new_population.append(child)
+        offsprings.append(child)
         i += 1
-    fitnesses = []
-    return new_population
+    return offsprings

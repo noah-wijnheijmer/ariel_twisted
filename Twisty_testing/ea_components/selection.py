@@ -25,3 +25,8 @@ def exponantial_rank_selection(population: list[Any]) -> Individual:
             break
         i += 1
     return population[-(i+1)]
+def survivor_selection(offspring: list[Any], pop_size: int) -> list[Any]:
+    offspring.sort(key=lambda ind: ind.fitness, reverse=True)
+    survivors = offspring[:pop_size]
+    return survivors
+
