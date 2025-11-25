@@ -6,7 +6,7 @@ from ariel.body_phenotypes.robogen_lite.modules.core import CoreModule
 from ariel.body_phenotypes.robogen_lite.modules.hinge import HingeModule
 
 
-def gecko() -> CoreModule:
+def gecko_doubletwist() -> CoreModule:
     """Gecko robot body.
 
     Create and attach bodies/sites, then print relative orientations between

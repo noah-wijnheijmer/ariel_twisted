@@ -1,5 +1,7 @@
 # Third-party libraries
+import json
 import time
+from collections.abc import Callable
 # import matplotlib.pyplot as plt
 import mujoco as mj
 import numpy as np
@@ -7,21 +9,25 @@ import numpy.typing as npt
 from mujoco import viewer
 import nevergrad as ng
 import matplotlib.pyplot as plt
+from collections import defaultdict
 
 
 # import prebuilt robot phenotypes
-from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_good import gecko
-from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
+from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko import gecko
+from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_untwisted import gecko_untwisted
+from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_good import gecko_good
+from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_front import gecko_front
+from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_doubletwist import gecko_doubletwist
+from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_doubletwist_turtle import gecko_doubletwist_turtle
 
 # Local libraries
-# from ariel.utils.renderers import video_renderer
-from ariel.utils.renderers import video_renderer, tracking_video_renderer
-from ariel.utils.runners import simple_runner
+from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
+from ariel.utils.renderers import tracking_video_renderer
 from ariel.utils.video_recorder import VideoRecorder
+from ariel.utils.runners import simple_runner
 from twisty_src.twisty_brain import RobotBrain
 from ariel.utils.tracker import Tracker
 from ariel.simulation.controllers.controller import Controller
-# from ariel.utils.video_recorder import VideoRecorder
 
 # Keep track of data / history
 HISTORY = []
@@ -34,25 +40,16 @@ RNG = np.random.default_rng(SEED)
 HIDDEN_LAYERS = [32, 32, 32]
 STARTING_POSITION = [0, 0, 0.1]
 EVAL_COUNTER = 0
-OPTIMIZER_NAME = "cma"  # Options: "CMA", "1+1", "TBPSA", "NGOpt"
-BUDGET = 1000
+OPTIMIZER_NAME = "cma"  # Options: "CMA", "TBPSA", "NGOpt"
+BUDGET = 5000
 NUM_WORKERS = 1
 
-
+# === HELPER FUNCTIONS ===
 
 def _set_brain_parameters(brain: RobotBrain, params: npt.ArrayLike) -> None:
     """Apply a flat parameter vector (or Nevergrad container) to the brain."""
     vector = getattr(params, "value", params)
     brain.set_weights_from_vector(np.asarray(vector, dtype=np.float32))
-
-# def fitness_function_basic(history: list[npt.NDArray[np.float64]]) -> float:
-#     """Reward forward motion along the gecko's primary (Y) axis."""
-#     ys = history[0][1]
-#     ye = history[-1][1]
-
-#     # maximize the distance
-#     y_distance = np.abs(ys - ye)  # negative delta corresponds to forward motion
-#     return y_distance
 
 def fitness_function_basic(history: list[npt.NDArray[np.float64]]) -> float:
     """Reward forward motion along the gecko's primary (Y) axis."""
@@ -63,8 +60,43 @@ def fitness_function_basic(history: list[npt.NDArray[np.float64]]) -> float:
     y_distance = ys - ye  # negative delta corresponds to forward motion
     return y_distance
 
-def run(params: npt.ArrayLike, brain: RobotBrain, mode: str ="simple") -> None:
+def create_file_name(robot: Callable) -> str:
+    optimizer_name = OPTIMIZER_NAME.lower()
+    
+    layer_counter = defaultdict(int)
+    for layer_size in HIDDEN_LAYERS:
+        layer_counter[layer_size] += 1
+    
+    hidden_layers_list = []
+    for layer_size, count in layer_counter.items():
+        hidden_layers_list.append(f"{count}x{layer_size}")
+    
+    hidden_layers_str = "_".join(hidden_layers_list)
+    
+    return f"{robot.__name__}_{optimizer_name}_{hidden_layers_str}_elu_frwd" # NOTE: hardcoded 'elu' and 'frwd' for now
+
+# def get_robot_name(robot: Callable) -> str:
+#     if 
+# === RUN FUNCTION ===
+
+def run(
+        robot_model: Callable,
+        params: npt.ArrayLike,
+        brain: RobotBrain,
+        mode: str="simple",
+        video_name: str | None = None
+    ) -> float:
+    
     """Main function to run the simulation with random movements."""
+
+    if mode not in {"viewer", "simple", "video"}:
+        raise ValueError(f"Mode {mode} not recognized. Choose from 'viewer', 'simple', or 'video'.")
+    
+    if mode == "video" and video_name is None:
+        raise ValueError("In 'video' mode, 'video_name' must be provided.")
+    
+    if mode != "video" and video_name is not None:
+        print("Warning: 'video_name' is only used in 'video' mode. Ignoring it.")
 
     # Initialise controller to controller to None, always in the beginning.
     mj.set_mjcb_control(None)  # DO NOT REMOVE
@@ -76,7 +108,7 @@ def run(params: npt.ArrayLike, brain: RobotBrain, mode: str ="simple") -> None:
     world = SimpleFlatWorld()
 
     # Initialise robot body
-    gecko_core = gecko()
+    gecko_core = robot_model()
 
     # Spawn robot in the world
     # Check docstring for spawn conditions
@@ -120,7 +152,10 @@ def run(params: npt.ArrayLike, brain: RobotBrain, mode: str ="simple") -> None:
         case "video":
             # Non-default VideoRecorder options
             PATH_TO_VIDEO_FOLDER = "./__videos__"
-            video_recorder = VideoRecorder(output_folder=PATH_TO_VIDEO_FOLDER)
+            video_recorder = VideoRecorder(
+                output_folder=PATH_TO_VIDEO_FOLDER,
+                file_name=video_name,
+            )
 
             # Render with video recorder
             tracking_video_renderer(
@@ -135,21 +170,24 @@ def run(params: npt.ArrayLike, brain: RobotBrain, mode: str ="simple") -> None:
             raise ValueError(f"Mode {mode} not recognized.")
 
     history  = tracker.history["xpos"][0]  # Get history of the first tracked object
-
     fitness = fitness_function_basic(history)
-    global EVAL_COUNTER
-    EVAL_COUNTER += 1
-    print(f"[Eval {EVAL_COUNTER}] Fitness: {fitness:.4f}")
 
     return -fitness
 
+# === MAIN EXPERIMENT FUNCTION ===
 
-def main():
-    robot = gecko()
+def run_experiment(gecko_model: Callable = gecko):
+    
+    # Reset rng before each experiment
+    global RNG
+    RNG = np.random.default_rng(SEED)
+    print(RNG.random())
+
+    save_file_name = create_file_name(gecko_model)
     
     mj.set_mjcb_control(None)
     world = SimpleFlatWorld()
-    world.spawn(robot.spec, spawn_position=STARTING_POSITION.copy(), correct_for_bounding_box=True)
+    world.spawn(gecko_model().spec, spawn_position=STARTING_POSITION.copy(), correct_for_bounding_box=True)
 
     model = world.spec.compile()
     data = mj.MjData(model)
@@ -172,7 +210,7 @@ def main():
         common_kwargs = dict(parametrization=param, budget=BUDGET, num_workers=NUM_WORKERS)
         if name == "cma":
             return ng.optimizers.CMA(**common_kwargs)
-        if name in {"oneplusone", "1+1"}:
+        if name == "oneplusone":
             return ng.optimizers.ParametrizedOnePlusOne(**common_kwargs)
         if name == "tbpsa":
             return ng.optimizers.TBPSA(**common_kwargs)
@@ -190,7 +228,7 @@ def main():
         cumulative_fitness = 0.0
         for i in range(optimizer.budget):
             x = optimizer.ask()
-            fitness = run(params=x.value, brain=brain, mode="simple")
+            fitness = run(robot_model=gecko_model, params=x.value, brain=brain, mode="simple")
             optimizer.tell(x, fitness)
             cumulative_fitness -= fitness
             if (i + 1) % 100 == 0:
@@ -199,21 +237,42 @@ def main():
                 cumulative_fitness = 0.0
                 fitness_history.append(avg_fitness)
     except KeyboardInterrupt:
-        print("Optimization interrupted by user.")
+        print("Optimization interrupted by user.")  
     
     best_brain = optimizer.provide_recommendation()
     print(f"Optimization setup took {(time.time() - start_time)/60:.2f} minutes.")
 
-    # Plot curve
-    plt.plot(fitness_history)
-    plt.xlabel("Iteration")
-    plt.ylabel("Fitness")
-    plt.title(f"{OPTIMIZER_NAME} Optimization History")
-    plt.show()
-
     print("Replaying best brain in video mode...")
-    run(params=best_brain.value, brain=brain, mode="video")
-
+    run(robot_model=gecko_model, params=best_brain.value, brain=brain, mode="video", video_name=save_file_name)
+    
+    return fitness_history
 
 if __name__ == "__main__":
-    main()
+    num_runs_per_experiment = 3
+    
+    for gecko_type in [
+        gecko,
+        gecko_untwisted,
+        gecko_good,
+        gecko_doubletwist,
+        gecko_doubletwist_turtle,
+        gecko_front,
+    ]:
+        histories = []
+        
+        for run_idx in range(num_runs_per_experiment):
+            print(f"Running experiment for {gecko_type.__name__}, run {run_idx + 1}...")
+            histories.append(run_experiment(gecko_model=gecko_type))
+            
+        # Save fitness history to JSON
+        with open(f"./__data__/{gecko_type.__name__}_fitnesses.json", "w") as f:
+            json.dump(histories, f)
+        
+        # Plot curve
+        for hist in histories:
+            plt.plot(hist)
+        plt.xlabel("Iteration")
+        plt.ylabel("Fitness")
+        plt.title(f"{gecko_type.__name__} optimization Fitness over Time")
+        plt.savefig(f"./__figures__/{gecko_type.__name__}_fitness_curve.png")
+        plt.close()
