@@ -33,8 +33,8 @@ RNG = np.random.default_rng(SEED)
 # -- HYPERPARAMETERS --- #
 STARTING_POSITION = [0, 0, 0.1]
 EVAL_COUNTER = 0
-OPTIMIZER_NAME = "NGOpt"  # Options: "CMA", "1+1", "TBPSA", "NGOpt"
-BUDGET = 500
+OPTIMIZER_NAME = "CMA"  # Options: "CMA", "1+1", "TBPSA", "NGOpt"
+BUDGET = 5000
 NUM_WORKERS = 1
 
 
@@ -169,37 +169,38 @@ def main():
 
     start_time = time.time()
     optimizer = _make_optimizer()
+    optimizer.parametrization.random_state = np.random.RandomState(SEED)
 
     print("Starting optimization...")
-    best_cpg_parameters = optimizer.minimize(run_with_cpg)
+    # best_cpg_parameters = optimizer.minimize(run_with_cpg)
 
-    # # Store history
-    # fitness_history = []
+    # Store history
+    fitness_history = []
 
-    # try:
-    #     cumulative_fitness = 0.0
-    #     for i in range(optimizer.budget):
-    #         x = optimizer.ask()
-    #         fitness = run_with_cpg(flat_cpg_params=x.value, mode="simple")
-    #         optimizer.tell(x, fitness)
-    #         cumulative_fitness -= fitness
-    #         if (i + 1) % 100 == 0:
-    #             avg_fitness = cumulative_fitness / 100
-    #             print(f"Iteration {i + 1}, Average Fitness over last 100 evaluations: {avg_fitness:.4f}")
-    #             cumulative_fitness = 0.0
-    #             fitness_history.append(avg_fitness)
-    # except KeyboardInterrupt:
-    #     print("Optimization interrupted by user.")
+    try:
+        cumulative_fitness = 0.0
+        for i in range(optimizer.budget):
+            x = optimizer.ask()
+            fitness = run_with_cpg(flat_cpg_params=x.value, mode="simple")
+            optimizer.tell(x, fitness)
+            cumulative_fitness -= fitness
+            if (i + 1) % 100 == 0:
+                avg_fitness = cumulative_fitness / 100
+                print(f"Iteration {i + 1}, Average Fitness over last 100 evaluations: {avg_fitness:.4f}")
+                cumulative_fitness = 0.0
+                fitness_history.append(avg_fitness)
+    except KeyboardInterrupt:
+        print("Optimization interrupted by user.")
     
-    # best_cpg_parameters = optimizer.provide_recommendation()
-    # print(f"Optimization setup took {(time.time() - start_time)/60:.2f} minutes.")
+    best_cpg_parameters = optimizer.provide_recommendation()
+    print(f"Optimization setup took {(time.time() - start_time)/60:.2f} minutes.")
 
     # Plot curve
-    # plt.plot(fitness_history)
-    # plt.xlabel("Iteration")
-    # plt.ylabel("Fitness")
-    # plt.title(f"{OPTIMIZER_NAME} Optimization History")
-    # plt.show()
+    plt.plot(fitness_history)
+    plt.xlabel("Iteration")
+    plt.ylabel("Fitness")
+    plt.title(f"{OPTIMIZER_NAME} Optimization History")
+    plt.show()
 
     print("Replaying best brain in video mode...")
     run_with_cpg(flat_cpg_params=best_cpg_parameters.value, mode="video")
