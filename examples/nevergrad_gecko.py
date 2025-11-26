@@ -62,6 +62,7 @@ def fitness_function_basic(history: list[npt.NDArray[np.float64]]) -> float:
 
 def create_file_name(robot: Callable) -> str:
     optimizer_name = OPTIMIZER_NAME.lower()
+    budget = str(BUDGET)[:-3] + 'k' if BUDGET >= 1000 else str(BUDGET)
     
     layer_counter = defaultdict(int)
     for layer_size in HIDDEN_LAYERS:
@@ -73,7 +74,7 @@ def create_file_name(robot: Callable) -> str:
     
     hidden_layers_str = "_".join(hidden_layers_list)
     
-    return f"{robot.__name__}_{optimizer_name}_{hidden_layers_str}_elu_frwd" # NOTE: hardcoded 'elu' and 'frwd' for now
+    return f"{robot.__name__}_{optimizer_name}_{budget}_{hidden_layers_str}_elu_frwd" # NOTE: hardcoded 'elu' and 'frwd' for now
 
 # def get_robot_name(robot: Callable) -> str:
 #     if 
@@ -206,7 +207,7 @@ def run_experiment(gecko_model: Callable = gecko):
     
     def _make_optimizer():
         name = OPTIMIZER_NAME.lower()
-        common_kwargs = dict(parametrization=param, budget=BUDGET, num_workers=NUM_WORKERS, random_state=RNG)
+        common_kwargs = dict(parametrization=param, budget=BUDGET, num_workers=NUM_WORKERS)
         if name == "cma":
             return ng.optimizers.CMA(**common_kwargs)
         if name == "oneplusone":
@@ -217,6 +218,7 @@ def run_experiment(gecko_model: Callable = gecko):
 
     start_time = time.time()
     optimizer = _make_optimizer()
+    optimizer.parametrization.random_state = np.random.RandomState(SEED)
 
     print("Starting optimization...")
 
@@ -251,11 +253,11 @@ if __name__ == "__main__":
     
     for gecko_type in [
         gecko,
-        gecko_untwisted,
-        gecko_good,
-        gecko_doubletwist,
-        gecko_doubletwist_turtle,
-        gecko_front,
+        # gecko_untwisted,
+        # gecko_good,
+        # gecko_doubletwist,
+        # gecko_doubletwist_turtle,
+        # gecko_front,
     ]:
         histories = []
         
