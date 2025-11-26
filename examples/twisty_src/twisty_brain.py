@@ -53,7 +53,7 @@ class RobotBrain(nn.Module):
         
         # Output layer
         layers.append(weight_norm(nn.Linear(prev_size, output_size)))
-        layers.append(nn.Tanh())  # Tanh to bound outputs to [-1, 1]
+        layers.append(nn.ELU())  # Tanh to bound outputs to [-1, 1]
         
         self.network = nn.Sequential(*layers)
         

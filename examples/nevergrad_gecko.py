@@ -41,7 +41,7 @@ HIDDEN_LAYERS = [32, 32, 32]
 STARTING_POSITION = [0, 0, 0.1]
 EVAL_COUNTER = 0
 OPTIMIZER_NAME = "cma"  # Options: "CMA", "TBPSA", "NGOpt"
-BUDGET = 5000
+BUDGET = 50000
 NUM_WORKERS = 1
 
 # === HELPER FUNCTIONS ===
@@ -181,7 +181,6 @@ def run_experiment(gecko_model: Callable = gecko):
     # Reset rng before each experiment
     global RNG
     RNG = np.random.default_rng(SEED)
-    print(RNG.random())
 
     save_file_name = create_file_name(gecko_model)
     
@@ -207,7 +206,7 @@ def run_experiment(gecko_model: Callable = gecko):
     
     def _make_optimizer():
         name = OPTIMIZER_NAME.lower()
-        common_kwargs = dict(parametrization=param, budget=BUDGET, num_workers=NUM_WORKERS)
+        common_kwargs = dict(parametrization=param, budget=BUDGET, num_workers=NUM_WORKERS, random_state=RNG)
         if name == "cma":
             return ng.optimizers.CMA(**common_kwargs)
         if name == "oneplusone":
@@ -248,7 +247,7 @@ def run_experiment(gecko_model: Callable = gecko):
     return fitness_history
 
 if __name__ == "__main__":
-    num_runs_per_experiment = 3
+    num_runs_per_experiment = 1
     
     for gecko_type in [
         gecko,
@@ -261,7 +260,14 @@ if __name__ == "__main__":
         histories = []
         
         for run_idx in range(num_runs_per_experiment):
-            print(f"Running experiment for {gecko_type.__name__}, run {run_idx + 1}...")
+            print("\n" + "=" * 50)
+            print(f"Running experiment for {gecko_type.__name__}, run {run_idx + 1}")
+            print("-" * 50)
+            print(f"HYPERPARAMETERS:")
+            print(f"  Hidden Layers: {HIDDEN_LAYERS}")
+            print(f"  Optimizer: {OPTIMIZER_NAME}")
+            print(f"  Budget: {BUDGET}")
+            print("-" * 50)
             histories.append(run_experiment(gecko_model=gecko_type))
             
         # Save fitness history to JSON
