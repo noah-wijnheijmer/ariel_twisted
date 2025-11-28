@@ -41,7 +41,7 @@ HIDDEN_LAYERS = [32, 32, 32]
 STARTING_POSITION = [0, 0, 0.1]
 EVAL_COUNTER = 0
 OPTIMIZER_NAME = "cma"  # Options: "CMA", "TBPSA", "NGOpt"
-BUDGET = 50000
+BUDGET = 500
 NUM_WORKERS = 1
 
 # === HELPER FUNCTIONS ===
@@ -249,7 +249,7 @@ def run_experiment(gecko_model: Callable = gecko):
     return fitness_history
 
 if __name__ == "__main__":
-    num_runs_per_experiment = 1
+    num_runs_per_experiment = 3
     
     for gecko_type in [
         gecko,
@@ -277,10 +277,35 @@ if __name__ == "__main__":
             json.dump(histories, f)
         
         # Plot curve
-        for hist in histories:
-            plt.plot(hist)
+        # for hist in histories:
+        # plt.plot(hist)
+        mean_runs = np.zeros(len(histories[0]))
+        mean_slope = np.zeros(len(histories[0]))
+        for history in histories:
+            for i in range(len(history)):
+                mean_runs[i] += history[i]
+                if i != (len(history)-1):
+                    deltax = history[i+1] - history[i]
+                    mean_slope[i] += deltax 
+
+        # print(mean_runs)
+        for j in range(len(mean_runs)):
+            mean_runs[j] = mean_runs[j]/(len(histories))
+            mean_slope[j] = mean_slope[j]/(len(histories))
+        # print(mean_runs)
+        y = mean_slope
+        x = np.linspace(1, len(mean_runs), num=len(mean_runs))
+        plt.plot(x, y)
         plt.xlabel("Iteration")
-        plt.ylabel("Fitness")
-        plt.title(f"{gecko_type.__name__} optimization Fitness over Time")
+        plt.ylabel("average slope")
+        plt.title(f"{gecko_type.__name__} optimization slope over Time")
+        plt.savefig(f"./__figures__/{gecko_type.__name__}_slope_curve.png")
+        plt.close()
+        y = mean_runs
+        x = np.linspace(1, len(mean_runs), num=len(mean_runs))
+        plt.plot(x, y)
+        plt.xlabel("Iteration")
+        plt.ylabel("average fitness")
+        plt.title(f"{gecko_type.__name__} optimization fitness over Time")
         plt.savefig(f"./__figures__/{gecko_type.__name__}_fitness_curve.png")
         plt.close()
