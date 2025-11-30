@@ -10,6 +10,7 @@ from mujoco import viewer
 import nevergrad as ng
 import matplotlib.pyplot as plt
 from collections import defaultdict
+import os
 
 
 # import prebuilt robot phenotypes
@@ -41,7 +42,7 @@ HIDDEN_LAYERS = [32, 32, 32]
 STARTING_POSITION = [0, 0, 0.1]
 EVAL_COUNTER = 0
 OPTIMIZER_NAME = "cma"  # Options: "CMA", "TBPSA", "NGOpt"
-BUDGET = 500
+BUDGET = 200
 NUM_WORKERS = 1
 
 # === HELPER FUNCTIONS ===
@@ -302,6 +303,7 @@ if __name__ == "__main__":
         plt.xlabel("Iteration")
         plt.ylabel("average slope")
         plt.title(f"{gecko_type.__name__} optimization slope over Time")
+        os.makedirs("./__figures__", exist_ok=True)
         plt.savefig(f"./__figures__/{gecko_type.__name__}_slope_curve.png")
         plt.close()
         y = mean_runs
