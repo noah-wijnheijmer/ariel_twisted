@@ -177,7 +177,7 @@ def run(
 
 # === MAIN EXPERIMENT FUNCTION ===
 
-def run_experiment(gecko_model: Callable = gecko):
+def run_experiment(seed: int, gecko_model: Callable = gecko):
     
     # Reset rng before each experiment
     global RNG
@@ -195,14 +195,15 @@ def run_experiment(gecko_model: Callable = gecko):
     nn_input_size = len(data.qpos)
     nn_output_size = model.nu
     mj.mj_resetData(model, data)
-
     brain = RobotBrain(
         input_size=nn_input_size,
         output_size=nn_output_size,
+        seed= seed,
         hidden_layers=HIDDEN_LAYERS,
     )
 
     initial_weights = brain.get_weights_as_vector().astype(np.float32)
+    print(initial_weights)
     param = ng.p.Array(init=initial_weights.copy())
     
     def _make_optimizer():
@@ -218,7 +219,7 @@ def run_experiment(gecko_model: Callable = gecko):
 
     start_time = time.time()
     optimizer = _make_optimizer()
-    optimizer.parametrization.random_state = np.random.RandomState(SEED)
+    optimizer.parametrization.random_state = np.random.RandomState(seed)
 
     print("Starting optimization...")
 
@@ -262,6 +263,8 @@ if __name__ == "__main__":
         histories = []
         
         for run_idx in range(num_runs_per_experiment):
+            seed = SEED
+            seed += run_idx
             print("\n" + "=" * 50)
             print(f"Running experiment for {gecko_type.__name__}, run {run_idx + 1}")
             print("-" * 50)
@@ -270,7 +273,7 @@ if __name__ == "__main__":
             print(f"  Optimizer: {OPTIMIZER_NAME}")
             print(f"  Budget: {BUDGET}")
             print("-" * 50)
-            histories.append(run_experiment(gecko_model=gecko_type))
+            histories.append(run_experiment(seed=seed, gecko_model=gecko_type))
             
         # Save fitness history to JSON
         with open(f"./__data__/{gecko_type.__name__}_fitnesses.json", "w") as f:

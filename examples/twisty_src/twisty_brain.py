@@ -31,7 +31,8 @@ class RobotBrain(nn.Module):
         self,
         input_size: int,
         output_size: int,
-        hidden_layers: list[int] | None = None,
+        seed: int,
+        hidden_layers: list[int] | None = None
     ):
         super(RobotBrain, self).__init__()
         
@@ -41,21 +42,23 @@ class RobotBrain(nn.Module):
         self.input_size = input_size
         self.output_size = output_size
         self.hidden_layers = hidden_layers
+        with torch.random.fork_rng():
+            torch.manual_seed(seed)
+            # Build network layers
+            layers = []
+            prev_size = input_size
         
-        # Build network layers
-        layers = []
-        prev_size = input_size
+            for hidden_size in hidden_layers:
+                lin = nn.Linear(prev_size, hidden_size)
+                layers.append(weight_norm(lin))
+                layers.append(nn.ELU())
+                prev_size = hidden_size
         
-        for hidden_size in hidden_layers:
-            layers.append(weight_norm(nn.Linear(prev_size, hidden_size)))
-            layers.append(nn.ELU())
-            prev_size = hidden_size
-        
-        # Output layer
-        layers.append(weight_norm(nn.Linear(prev_size, output_size)))
-        layers.append(nn.Tanh())  # Tanh to bound outputs to [-1, 1]
-        
-        self.network = nn.Sequential(*layers)
+            # Output layer
+            output_linear = nn.Linear(prev_size, output_size)
+            layers.append(weight_norm(output_linear))
+            layers.append(nn.Tanh())  # Tanh to bound outputs to [-1, 1]
+            self.network = nn.Sequential(*layers)
         
         # Initialize weights with small values
     #     self._initialize_weights()
