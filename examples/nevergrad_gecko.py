@@ -11,6 +11,7 @@ import nevergrad as ng
 import matplotlib.pyplot as plt
 from collections import defaultdict
 import os
+import datetime
 
 
 # import prebuilt robot phenotypes
@@ -61,21 +62,36 @@ def fitness_function_basic(history: list[npt.NDArray[np.float64]]) -> float:
     y_distance = ys - ye  # negative delta corresponds to forward motion
     return y_distance
 
-def create_file_name(robot: Callable) -> str:
+def create_file_name(
+        experiment_name: str,
+        robot: Callable
+    ) -> str:
+    
+    name_components = []
+    name_components.append(experiment_name)
+    
+    robot_name = robot.__name__
+    name_components.append(robot_name)
+    
     optimizer_name = OPTIMIZER_NAME.lower()
+    name_components.append(optimizer_name)
+    
     budget = str(BUDGET)[:-3] + 'k' if BUDGET >= 1000 else str(BUDGET)
+    name_components.append(budget)
     
     layer_counter = defaultdict(int)
     for layer_size in HIDDEN_LAYERS:
         layer_counter[layer_size] += 1
     
-    hidden_layers_list = []
     for layer_size, count in layer_counter.items():
-        hidden_layers_list.append(f"{count}x{layer_size}")
+        name_components.append(f"{count}x{layer_size}")
     
-    hidden_layers_str = "_".join(hidden_layers_list)
+    timestamp = datetime.datetime.now(tz=datetime.UTC).strftime(
+        "%Y%m%d_%H%M%S",
+    )
+    name_components.append(timestamp)
     
-    return f"{robot.__name__}_{optimizer_name}_{budget}_{hidden_layers_str}_elu_frwd" # NOTE: hardcoded 'elu' and 'frwd' for now
+    return "_".join(name_components)
 
 # def get_robot_name(robot: Callable) -> str:
 #     if 
@@ -158,6 +174,7 @@ def run(
                 output_folder=PATH_TO_VIDEO_FOLDER,
                 file_name=video_name,
             )
+            video_recorder._add_timestamp_to_file_name = False  # Disable timestamp, handled by custom naming
 
             # Render with video recorder
             tracking_video_renderer(
@@ -178,13 +195,13 @@ def run(
 
 # === MAIN EXPERIMENT FUNCTION ===
 
-def run_experiment(seed: int, gecko_model: Callable = gecko):
+def run_nn_experiment(seed: int, gecko_model: Callable = gecko, experiment_name: str = "nn_elu_frwd") -> list[float]:
     
     # Reset rng before each experiment
     global RNG
     RNG = np.random.default_rng(SEED)
+    save_file_name = create_file_name(experiment_name=experiment_name, robot=gecko_model)
 
-    save_file_name = create_file_name(gecko_model)
     
     mj.set_mjcb_control(None)
     world = SimpleFlatWorld()
@@ -251,7 +268,8 @@ def run_experiment(seed: int, gecko_model: Callable = gecko):
     return fitness_history
 
 if __name__ == "__main__":
-    num_runs_per_experiment = 3
+    num_runs_per_experiment = 1
+    experiment_name = "nn_elu_frwd"
     
     for gecko_type in [
         gecko,
@@ -265,7 +283,7 @@ if __name__ == "__main__":
         
         for run_idx in range(num_runs_per_experiment):
             seed = SEED
-            seed += run_idx
+            # seed += run_idx
             print("\n" + "=" * 50)
             print(f"Running experiment for {gecko_type.__name__}, run {run_idx + 1}")
             print("-" * 50)
@@ -274,7 +292,7 @@ if __name__ == "__main__":
             print(f"  Optimizer: {OPTIMIZER_NAME}")
             print(f"  Budget: {BUDGET}")
             print("-" * 50)
-            histories.append(run_experiment(seed=seed, gecko_model=gecko_type))
+            histories.append(run_nn_experiment(seed=seed, gecko_model=gecko_type, experiment_name=experiment_name))
             
         # Save fitness history to JSON
         with open(f"./__data__/{gecko_type.__name__}_fitnesses.json", "w") as f:
