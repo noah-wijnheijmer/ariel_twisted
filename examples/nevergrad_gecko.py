@@ -10,6 +10,7 @@ from mujoco import viewer
 import nevergrad as ng
 import matplotlib.pyplot as plt
 from collections import defaultdict
+import os
 
 
 # import prebuilt robot phenotypes
@@ -41,7 +42,11 @@ HIDDEN_LAYERS = [32, 32, 32]
 STARTING_POSITION = [0, 0, 0.1]
 EVAL_COUNTER = 0
 OPTIMIZER_NAME = "cma"  # Options: "CMA", "TBPSA", "NGOpt"
-BUDGET = 500
+<<<<<<< HEAD
+BUDGET = 26000
+=======
+BUDGET = 200
+>>>>>>> bf2d4d5169d75973616be2e0a91b99a89a80ab6c
 NUM_WORKERS = 1
 
 # === HELPER FUNCTIONS ===
@@ -253,11 +258,11 @@ if __name__ == "__main__":
     num_runs_per_experiment = 3
     
     for gecko_type in [
-        gecko,
+        # gecko,
         # gecko_untwisted,
         # gecko_good,
         # gecko_doubletwist,
-        # gecko_doubletwist_turtle,
+        gecko_doubletwist_turtle,
         # gecko_front,
     ]:
         histories = []
@@ -272,6 +277,7 @@ if __name__ == "__main__":
             print(f"  Hidden Layers: {HIDDEN_LAYERS}")
             print(f"  Optimizer: {OPTIMIZER_NAME}")
             print(f"  Budget: {BUDGET}")
+            print(f"seed: {seed}")
             print("-" * 50)
             histories.append(run_experiment(seed=seed, gecko_model=gecko_type))
             
@@ -302,6 +308,7 @@ if __name__ == "__main__":
         plt.xlabel("Iteration")
         plt.ylabel("average slope")
         plt.title(f"{gecko_type.__name__} optimization slope over Time")
+        os.makedirs("./__figures__", exist_ok=True)
         plt.savefig(f"./__figures__/{gecko_type.__name__}_slope_curve.png")
         plt.close()
         y = mean_runs
