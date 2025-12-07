@@ -8,7 +8,7 @@ SEED = 40
 RNG = np.random.default_rng(SEED)
 
 def _blend_crossover_matrix(
-    matrix1: np.ndarray[Any, Any], matrix2: np.ndarray[Any, Any], alpha: float,
+    matrix1: np.ndarray[Any, Any], matrix2: np.ndarray[Any, Any], alpha: float, rng
 ) -> np.ndarray[Any, Any]:
     """Apply Blend Crossover (BLX-alpha) to two matrices element-wise.
     
@@ -33,7 +33,7 @@ def _blend_crossover_matrix(
     upper_bound = max_vals + alpha * diff
     
     # Sample uniformly from blend intervals
-    child_matrix = RNG.uniform(lower_bound, upper_bound)
+    child_matrix = rng.uniform(lower_bound, upper_bound)
     
     # Ensure values stay in [0, 1] range for probability matrices
     child_matrix = np.clip(child_matrix, 0.0, 1.0)
@@ -43,6 +43,7 @@ def _blend_crossover_matrix(
 def float_creep(
     individual: Individual,
     span: float,
+    rng,
     mutation_probability: float,
 ) -> list[float]:
     """Mutate numeric arrays/lists by adding uniform noise within +/- span.
@@ -54,20 +55,20 @@ def float_creep(
     shape = ind_arr.shape
 
     # Generate mutation values
-    mutator = RNG.uniform(
+    mutator = rng.uniform(
         low=0,
         high=span,
         size=shape,
     )
 
     # Include negative mutations
-    sub_mask = RNG.choice(
+    sub_mask = rng.choice(
         [-1, 1],
         size=shape,
     )
 
     # Determine which positions to mutate
-    do_mask = RNG.choice(
+    do_mask = rng.choice(
         [1, 0],
         size=shape,
         p=[mutation_probability, 1 - mutation_probability],
@@ -79,6 +80,7 @@ def float_creep(
 def crossover_individuals(
     parent1: Individual, 
     parent2: Individual,
+    rng,
     id: int, 
     alpha: float = 0.5,
 ) -> Individual:
@@ -105,9 +107,9 @@ def crossover_individuals(
     rot1, rot2 = np.array(rotation_probs1), np.array(rotation_probs2)
     
     # Apply blend crossover to each matrix
-    child_type = _blend_crossover_matrix(type1, type2, alpha)
-    child_conn = _blend_crossover_matrix(conn1, conn2, alpha)
-    child_rot = _blend_crossover_matrix(rot1, rot2, alpha)
+    child_type = _blend_crossover_matrix(type1, type2, alpha, rng)
+    child_conn = _blend_crossover_matrix(conn1, conn2, alpha, rng)
+    child_rot = _blend_crossover_matrix(rot1, rot2, alpha, rng)
     
     # Determine twisty status - inherit if either parent is twisty
     twisty = parent1.twisty or parent2.twisty
@@ -122,7 +124,7 @@ def crossover_individuals(
 
 
 def mutate_individual(
-    individual: Individual, id: int, mutation_rate: float = 0.1, 
+    individual: Individual, rng, id: int, mutation_rate: float = 0.1, 
 ) -> Individual:
     """Mutate probability matrices using ARIEL's (old) float_creep mutation.
     
@@ -141,27 +143,30 @@ def mutate_individual(
     rotation_probs = individual.genotype[2]
     
     # Apply ARIEL's float_creep mutations
-    if RNG.random() < mutation_rate:
+    if rng.random() < mutation_rate:
         type_probs = float_creep(
             individual=type_probs,
             span=0.1,
+            rng=rng,
             mutation_probability=0.3,
         )
         # Ensure values stay in [0, 1] range
         type_probs = np.clip(type_probs, 0, 1).tolist()
     
-    if RNG.random() < mutation_rate:
+    if rng.random() < mutation_rate:
         conn_probs = float_creep(
             individual=conn_probs,
             span=0.1,
+            rng=rng,
             mutation_probability=0.3,
         )
         conn_probs = np.clip(conn_probs, 0, 1).tolist()
     
-    if RNG.random() < mutation_rate:
+    if rng.random() < mutation_rate:
         rotation_probs = float_creep(
             individual=rotation_probs,
             span=0.1,
+            rng=rng,
             mutation_probability=0.3,
         )
         rotation_probs = np.clip(rotation_probs, 0, 1).tolist()

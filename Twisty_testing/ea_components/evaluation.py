@@ -10,10 +10,8 @@ from simulation.cpg.na_cpg import (
 )
 
 console = Console()
-SEED = 40
-RNG = np.random.default_rng(SEED)
 
-def run_for_fitness(robot: CoreModule, individual: Any, correct_for_bounding: bool, spawn_z: float, spawn_xy:list[float], target_pos: list[float], brain_type: str = "sf_cpg") -> Any:
+def run_for_fitness(robot: CoreModule, individual: Any, correct_for_bounding: bool, rng, spawn_z: float, spawn_xy:list[float], target_pos: list[float], brain_type: str = "sf_cpg") -> Any:
     """Modified run function that returns fitness based on distance to target."""
     try:
         if individual.fitness is not None:
@@ -36,7 +34,7 @@ def run_for_fitness(robot: CoreModule, individual: Any, correct_for_bounding: bo
     
         # Create CPG controller
         if brain_type == "sf_cpg":
-            weight_matrix = RNG.uniform(-0.1, 0.1, size=(model.nu, model.nu))
+            weight_matrix = rng.uniform(-0.1, 0.1, size=(model.nu, model.nu))
             cpg = CPGSensoryFeedback(
                 num_neurons=int(model.nu),
                 sensory_term=-0.0,

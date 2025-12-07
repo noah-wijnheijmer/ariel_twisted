@@ -3,10 +3,9 @@ from ea_components.selection import exponantial_rank_selection
 from ea_components.reproduction import crossover_individuals, mutate_individual
 import numpy as np
 
-SEED = 40
-RNG = np.random.default_rng(SEED)
 
 def evolve_generation(population: list[Individual],
+                                    rng, 
                                     id: int = -1, 
                                     mutation_rate: float = 0.1,
                                     crossover_rate: float = 0.7,
@@ -35,19 +34,19 @@ def evolve_generation(population: list[Individual],
         i = id
     # Generate offspring through crossover and mutation
     while len(offsprings) < 3 * len(population):
-        if RNG.random() < crossover_rate:
+        if rng.random() < crossover_rate:
             # Crossover: select two parents and create offspring
-            parent1 = exponantial_rank_selection(population)
-            parent2 = exponantial_rank_selection(population)
-            child = crossover_individuals(parent1, parent2, id=i)
+            parent1 = exponantial_rank_selection(population, rng)
+            parent2 = exponantial_rank_selection(population, rng)
+            child = crossover_individuals(parent1, parent2, rng, id=i)
             
             # Apply mutation to crossover offspring (optional but recommended)
-            if RNG.random() < mutation_rate:
-                child = mutate_individual(individual=child, id=i, mutation_rate=mutation_rate)  # Lower mutation rate for crossover offspring
+            if rng.random() < mutation_rate:
+                child = mutate_individual(individual=child, rng=rng, id=i, mutation_rate=mutation_rate)  # Lower mutation rate for crossover offspring
         else:
             # Mutation only: select one parent and mutate
-            parent = exponantial_rank_selection(population)
-            child = mutate_individual(individual=parent, id=i, mutation_rate=mutation_rate )
+            parent = exponantial_rank_selection(population, rng)
+            child = mutate_individual(individual=parent, rng=rng, id=i, mutation_rate=mutation_rate )
         child.id = i
         offsprings.append(child)
         i += 1

@@ -17,7 +17,7 @@ import os
 from robot_body.constructor import construct_mjspec_from_graph
 from ea_components.evaluation import run_for_fitness
 # Global constants
-SEED = 40
+SEED = 41
 RNG = np.random.default_rng(SEED)
 console = Console()
 # Typing aliases
@@ -154,11 +154,11 @@ def individual_from_dict(data: dict[str, Any]) -> Individual:
     ind.tags_ = data.get("tags", {})
     return ind
 
-def create_individual(con_twisty: bool, id: int, num_modules: int=20) -> Individual:
+def create_individual(con_twisty: bool, id: int, rng, num_modules: int=20) -> Individual:
     ind = Individual()
     ind.id = id
     # "Type" probability space - bias towards HINGE modules for functional robots
-    type_probability_space = RNG.random(
+    type_probability_space = rng.random(
         size=(num_modules, NUM_OF_TYPES_OF_MODULES),
         dtype=np.float32,
     )
@@ -174,20 +174,43 @@ def create_individual(con_twisty: bool, id: int, num_modules: int=20) -> Individ
         type_probability_space[i, 3] *= 0.1  # NONE gets very low weight
 
     # "Connection" probability space
-    conn_probability_space = RNG.random(
+    conn_probability_space = rng.random(
         size=(num_modules, num_modules, NUM_OF_FACES),
         dtype=np.float32,
     )
-
+    type_probability_space[:, 0] = 0
+    type_probability_space[0][0] = 1.0
+    # print(type_probability_space)
+    conn_probability_space[:, 0, :] = 0 
+    # print(f"conn: {conn_probability_space[0]}")
+    hinge_idxs = []
+    brick_idxs = []
+    for i in range(len(type_probability_space)):
+        mod = np.argmax(type_probability_space[i])
+        if mod == 1:
+            brick_idxs.append(i)
+        elif mod == 2:
+            hinge_idxs.append(i)
+    # print(brick_idxs)
+    # print(hinge_idxs)
+    for parent_idx in range(len(conn_probability_space)):
+        # print(parent_idx)
+        parent = np.argmax(type_probability_space[parent_idx])
+        if parent == 1:
+            conn_probability_space[parent_idx,brick_idxs, :] = 0
+            # print(conn_probability_space[parent_idx])
+        elif parent == 2:
+            conn_probability_space[parent_idx,hinge_idxs, :] = 0
+            # print(conn_probability_space[parent_idx])
     # "Rotation" probability space
     if con_twisty is True:   
-        rotation_probability_space = RNG.random(
+        rotation_probability_space = rng.random(
             size=(num_modules, NUM_OF_ROTATIONS),
             dtype=np.float32,
         )
     else:
         # If twisty not true, the twisted angles are given the value zero, so they can't be selected.
-        rotation_probability_space = RNG.random(
+        rotation_probability_space = rng.random(
             size=(num_modules, NUM_OF_ROTATIONS),
             dtype=np.float32,
         )
@@ -208,11 +231,11 @@ def create_individual(con_twisty: bool, id: int, num_modules: int=20) -> Individ
     save_graph_as_json(graph, path)
     # ===== DEBUG PRINTS =====
 
-    print()
-    print("Type probability space shape:", type_probability_space.shape)
-    print("Connection probability space shape:", conn_probability_space.shape)
-    print("Rotation probability space shape:", rotation_probability_space.shape)
-    print()
+    #print()
+    #print("Type probability space shape:", type_probability_space.shape)
+    #print("Connection probability space shape:", conn_probability_space.shape)
+    #print("Rotation probability space shape:", rotation_probability_space.shape)
+    #print()
 
     # ========================
 
@@ -232,6 +255,31 @@ def create_individual_from_matrices(
     ind = Individual()
     ind.id = id
     # Decode to graph
+    conn_probs[:, 0, :] = 0
+    type_probs[:, 0] = 0
+    type_probs[0][0] = 1.0
+    # print(type_probability_space)
+    conn_probs[:, 0, :] = 0 
+    # print(f"conn: {conn_probability_space[0]}")
+    hinge_idxs = []
+    brick_idxs = []
+    for i in range(len(type_probs)):
+        mod = np.argmax(type_probs[i])
+        if mod == 1:
+            brick_idxs.append(i)
+        elif mod == 2:
+            hinge_idxs.append(i)
+    # print(brick_idxs)
+    # print(hinge_idxs)
+    for parent_idx in range(len(conn_probs)):
+        # print(parent_idx)
+        parent = np.argmax(type_probs[parent_idx])
+        if parent == 1:
+            conn_probs[parent_idx,brick_idxs, :] = 0
+            # print(conn_probability_space[parent_idx])
+        if parent == 2:
+            conn_probs[parent_idx,hinge_idxs, :] = 0
+            # print(conn_probability_space[parent_idx])
     hpd = HighProbabilityDecoder(len(type_probs))
     graph = hpd.probability_matrices_to_graph(
         np.array(type_probs, copy=True),
@@ -249,14 +297,21 @@ def create_individual_from_matrices(
     
     return ind
 
-def evaluate_population(population: list[Individual], correct_for_bounding: bool, spawn_z: float, spawn_xy: list[float] ,target_pos: list[float], brain_type: str) -> None:
+def evaluate_population(population: list[Individual], rng, correct_for_bounding: bool, spawn_z: float, spawn_xy: list[float] ,target_pos: list[float], brain_type: str) -> None:
     """Evaluate fitness for all individuals in population."""
     for individual in population:
         
         robot = construct_mjspec_from_graph(individual.graph)
-        fitness = run_for_fitness(robot, individual, correct_for_bounding, spawn_z, spawn_xy ,target_pos, brain_type)
+        if robot is None: # type: ignore
+            individual.fitness = 0.0
+        fitness = run_for_fitness(robot, individual, correct_for_bounding, rng, spawn_z, spawn_xy ,target_pos, brain_type)
         individual.fitness = fitness # type: ignore
         console.log(f"Individual (twisty={individual.twisty}) fitness: {fitness:.3f}") # type: ignore
         # except Exception as e:
         #     console.log(f"Error evaluating individual: {e}")
         #     individual.fitness = 0.0
+if __name__ == "__main__":
+    # Test several times
+    seed = 50
+    rng = np.random.default_rng(seed)
+    i = create_individual(False, 1, rng, 20)

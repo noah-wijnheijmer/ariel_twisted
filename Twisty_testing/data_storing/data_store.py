@@ -26,13 +26,14 @@ def initialize_experiment_data(generations: int, population_size: int) -> dict[s
 
 def calculate_generation_statistics( 
     mixed_twisty_population: list[Individual], 
-    generation: int
+    generation: int,
+    run_type:str,
 ) -> dict[str, Any]:
     """Calculate comprehensive statistics for a generation."""
     mixed_twisty_fitnesses = [ind.fitness for ind in mixed_twisty_population]
     
     return {"generation": generation + 1,
-        "mixed_twisty": {
+        f"{run_type}": {
             "mean": float(np.mean(mixed_twisty_fitnesses)),
             "std": float(np.std(mixed_twisty_fitnesses)),
             "min": float(min(mixed_twisty_fitnesses)),
@@ -49,17 +50,19 @@ def finalize_experiment_data(
     best_mixed_twisty_fitness: float,
     champion_type: str,
     champion_fitness: float,
+    experiment_id:int,
+    run_type: str,
     data: Path
 ) -> None:
     """Calculate final statistics and save experiment data."""
     # Calculate overall statistics
     mixed_twisty_all_scores = [
         score for gen in experiment_data["generations"] 
-        for score in gen["mixed_twisty"]["all_fitnesses"]
+        for score in gen[f"{run_type}"]["all_fitnesses"]
     ]
     
     experiment_data["final_statistics"] = {
-        "non_twisty": {
+        f"{run_type}": {
             "overall_mean": float(np.mean(mixed_twisty_all_scores)),
             "overall_std": float(np.std(mixed_twisty_all_scores)),
             "overall_min": float(min(mixed_twisty_all_scores)),
@@ -76,7 +79,7 @@ def finalize_experiment_data(
     }
     
     # Save experiment data
-    experiment_filename = f"experiment_data_{champion_type.lower()}_champion.json"
+    experiment_filename = f"experiment_data_{champion_type.lower()}_champion{experiment_id+10}.json"
     with open(data / experiment_filename, "w", encoding="utf-8") as f:
         json.dump(experiment_data, f, indent=2)
     console.log(f"📈 Complete experiment data saved to: {data / experiment_filename}")

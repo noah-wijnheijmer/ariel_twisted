@@ -18,10 +18,10 @@ CWD = Path.cwd()
 DATA = Path(CWD / "__data__" / SCRIPT_NAME)
 DATA.mkdir(exist_ok=True)
 DATA_SETTINGS = [DATA, SCRIPT_NAME]
-SEED = 40
+SEED = 41
 RNG = np.random.default_rng(SEED)
 EVOLUTION_CONFIG = {
-    "generations": 20,
+    "generations": 3,
     "population_size": 10,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
@@ -31,12 +31,16 @@ EVOLUTION_CONFIG = {
     "checkpoint_gen": 5, # which generation to load from.
     "start_id": 91, # if old graph data should be kept, make it some higher number.
     "twisty_evo": True,
+    "mixed": False,
     "p_twisty": 0.5,
 }
 # if correcting for bounding box, the height will be reduced to zero. Otherwise choose a custom z value for the height.
-EVAL_CONFIG = {"correct_for_bounding_box": True, "custom_z": 0.39, "custom_xy": [0, 0] ,"target_pos": [0, 5, 0.5], "brain_type": "sf_cpg", "num_modules": 10}
+EVAL_CONFIG = {"correct_for_bounding_box": True, "custom_z": 0.39, "custom_xy": [0, 0] ,"target_pos": [0, 5, 0.5], "brain_type": "sf_cpg", "num_modules": 20}
 
 def run_evolution_experiment(
+    seed: int,
+    experiment_id: int,
+    run_type: str,
     generations: int = EVOLUTION_CONFIG['generations'],
     population_size: int = EVOLUTION_CONFIG['population_size'],
     save_evolution_graphs: bool = EVOLUTION_CONFIG['save_evolution_graphs'],
@@ -57,7 +61,7 @@ def run_evolution_experiment(
     """
     console.log("Starting evolutionary experiment...")
     console.log(f"Generations: {generations}, Population size: {population_size}")
-    
+    rng = np.random.default_rng(seed)
     # Initialize experiment tracking data
     experiment_data = initialize_experiment_data(generations, population_size)
     
@@ -71,19 +75,22 @@ def run_evolution_experiment(
         print(generations)
     elif EVOLUTION_CONFIG["twisty_evo"] is False:
         population = [
-        create_individual(con_twisty=False, id=i, num_modules=EVAL_CONFIG["num_modules"]) for i in range(population_size)]
-    else:
+        create_individual(con_twisty=False, id=i, rng=rng, num_modules=EVAL_CONFIG["num_modules"]) for i in range(population_size)]
+    elif EVOLUTION_CONFIG["mixed"] is True:
         population = []
         p_twisty = EVOLUTION_CONFIG["p_twisty"]
         i = 0
         for _ in range(population_size):
-            p = RNG.random()
+            p = rng.random()
             if p >= float(p_twisty):
-                population.append(create_individual(con_twisty=True, id=i, num_modules=EVAL_CONFIG["num_modules"]))
+                population.append(create_individual(con_twisty=True, id=i, rng=rng , num_modules=EVAL_CONFIG["num_modules"]))
             else:
-                population.append(create_individual(con_twisty=False, id=i, num_modules=EVAL_CONFIG["num_modules"]))
+                population.append(create_individual(con_twisty=False, id=i, rng=rng, num_modules=EVAL_CONFIG["num_modules"]))
             i+=1
-    evaluate_population(population, EVAL_CONFIG["correct_for_bounding_box"], EVAL_CONFIG["custom_z"], EVAL_CONFIG["custom_xy"] ,EVAL_CONFIG["target_pos"], EVAL_CONFIG["brain_type"])
+    else:
+        population = [
+        create_individual(con_twisty=True, id=i, rng=rng, num_modules=EVAL_CONFIG["num_modules"]) for i in range(population_size)]
+    evaluate_population(population, rng, EVAL_CONFIG["correct_for_bounding_box"], EVAL_CONFIG["custom_z"], EVAL_CONFIG["custom_xy"] ,EVAL_CONFIG["target_pos"], EVAL_CONFIG["brain_type"])
     # Track best individuals across all generations
     best_non_twisty_ever = max(population, key=lambda x: x.fitness)
     best_non_twisty_fitness = -float('inf')
@@ -120,6 +127,7 @@ def run_evolution_experiment(
         gen_stats = calculate_generation_statistics(
             population,
             generation,
+            run_type=run_type
         )
 
         experiment_data["generations"].append(gen_stats)
@@ -142,10 +150,10 @@ def run_evolution_experiment(
 
         # Report generation statistics
         console.log(f"Generation {generation + 1} Detailed Statistics:")
-        non_twisty_stats = gen_stats["mixed_twisty"]
+        non_twisty_stats = gen_stats[f"{run_type}"]
         
         console.log(
-            f"  mixed-twisty - Mean: {non_twisty_stats['mean']:.3f} ± "
+            f"  {run_type} - Mean: {non_twisty_stats['mean']:.3f} ± "
             f"{non_twisty_stats['std']:.3f}"
         )
         console.log(
@@ -160,12 +168,12 @@ def run_evolution_experiment(
         # Evolve populations (except for last generation)
         if generation < generations - 1:
             if EVOLUTION_CONFIG["load_checkpoint"] is True:
-                next_gen = evolve_generation(population, id=start_id)
+                next_gen = evolve_generation(population, rng=rng, id=start_id)
                 start_id = -1
             else:
-                next_gen = evolve_generation(population)
+                next_gen = evolve_generation(population, rng=rng)
             console.log("Evaluating population...")
-            evaluate_population(next_gen, EVAL_CONFIG["correct_for_bounding_box"], EVAL_CONFIG["custom_z"], EVAL_CONFIG["custom_xy"] ,EVAL_CONFIG["target_pos"], EVAL_CONFIG["brain_type"])
+            evaluate_population(next_gen, rng, EVAL_CONFIG["correct_for_bounding_box"], EVAL_CONFIG["custom_z"], EVAL_CONFIG["custom_xy"] ,EVAL_CONFIG["target_pos"], EVAL_CONFIG["brain_type"])
             population = survivor_selection(next_gen, population_size)
 
     champion = best_non_twisty_ever
@@ -177,16 +185,16 @@ def run_evolution_experiment(
     # Calculate final experiment statistics and save data
     finalize_experiment_data(
         experiment_data, best_non_twisty_fitness,
-        champion_type, champion_fitness, DATA
+        champion_type, champion_fitness, experiment_id, run_type=run_type, data=DATA
     )
 
     console.log(f"[bold green]🏆 OVERALL CHAMPION: {champion_type} robot")
     console.log(f"[bold green]🏆 Champion Fitness: {champion_fitness:.3f}")
 
     # Save champion graph to file
-    champion_filename = f"champion_{champion_type.lower()}_robot.json"
+    champion_filename = f"champion_{champion_type.lower()}_robot{experiment_id+10}.json"
     brain = champion.brain_genotype
-    filename = "champ_brain.json"
+    filename = f"champ_{champion_type.lower()}_brain{experiment_id+10}.json"
 
     # Open the file in write mode and save the data
     with open(DATA/filename, 'w') as file:
@@ -198,25 +206,28 @@ def run_evolution_experiment(
     return champion, experiment_data
 def main() -> None:
     """Entry point for evolutionary experiment."""
-    champion, experiment_data = run_evolution_experiment()
-    
+    experiments_data = []
+    repetitions = 3
+    run_type = "twisty"
+    for i in range(repetitions):
+        champion, experiment_data = run_evolution_experiment(seed=SEED+i, experiment_id=i, run_type=run_type)
+        experiments_data.append(experiment_data)
+        console.log("\n🏆 Visualizing champion robot...")
+        champion_robot = construct_mjspec_from_graph(champion.graph)
+        visualize_champ(
+            champion_robot,
+            champion,
+            EVAL_CONFIG["correct_for_bounding_box"],
+            EVAL_CONFIG["custom_z"],
+            EVAL_CONFIG["custom_xy"],
+            DATA_SETTINGS,
+            EVAL_CONFIG["brain_type"],
+            mode="video",
+            video_name=f"{run_type}"
+        )
     # Plot fitness over generations
     console.log("\n📊 Plotting fitness over generations...")
-    plot_fitness_over_generations(experiment_data, population_name="mixed_twisty")
-    console.log("\n🏆 Visualizing champion robot...")
-    champion_robot = construct_mjspec_from_graph(champion.graph)
-    history = visualize_champ(
-        champion_robot,
-        champion,
-        EVAL_CONFIG["correct_for_bounding_box"],
-        EVAL_CONFIG["custom_z"],
-        EVAL_CONFIG["custom_xy"],
-        DATA_SETTINGS,
-        EVAL_CONFIG["brain_type"],
-        mode="launcher"
-    )
-    if history:
-        show_qpos_history(history)
+    plot_fitness_over_generations(experiments_data, population_name=f"{run_type}", repetitions= repetitions)
 
 if __name__ == "__main__":
     # Test several times
