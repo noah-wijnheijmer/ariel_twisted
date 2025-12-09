@@ -3,6 +3,7 @@ from robot_body.modules.core import CoreModule
 from ea_components.individual import Individual
 from simulation.environments._simple_flat import SimpleFlatWorld
 from utils.tracker import Tracker
+from ariel.utils.renderers import tracking_video_renderer
 from utils.video_recorder import VideoRecorder
 from utils.renderers import video_renderer
 from simulation.cpg.sf_cpg import CPGSensoryFeedback, sf_policy
@@ -17,12 +18,12 @@ import mujoco
 
 console = Console()
 SEED = 40
-RNG = np.random.default_rng(SEED)
+# RNG = np.random.default_rng(SEED)
 import numpy as np
 import matplotlib.pyplot as plt  # ADD THIS
 # ...existing code...
 
-def visualize_champ(robot: CoreModule, individual: Individual, correct_for_bounding: bool, spawn_z: float, spawn_xy: list[float], path_settings: list[Any], brain_type: str, mode: str = "video") -> list[list[float]]:
+def visualize_champ(robot: CoreModule, individual: Individual, correct_for_bounding: bool, spawn_z: float, spawn_xy: list[float], path_settings: list[Any], brain_type: str, mode: str = "video", video_name: str | None = None) -> list[list[float]]:
     mujoco.set_mjcb_control(None)
     world = SimpleFlatWorld()
     for i in range(len(robot.spec.geoms)):
@@ -61,7 +62,7 @@ def visualize_champ(robot: CoreModule, individual: Individual, correct_for_bound
 
     mujoco.set_mjcb_control(lambda m, d: ctrl.set_control(m, d, cpg))  # type: ignore
 
-    sim_duration = 5.0
+    sim_duration = 30.0
     timestep = model.opt.timestep
     steps = int(sim_duration / timestep)
     history: list[list[float]] = []
@@ -77,9 +78,9 @@ def visualize_champ(robot: CoreModule, individual: Individual, correct_for_bound
         step_and_collect(steps)
     elif mode == "video":
         path_to_video_folder = str(path_settings[0] / "videos")
-        video_recorder = VideoRecorder(output_folder=path_to_video_folder)
+        video_recorder = VideoRecorder(output_folder=path_to_video_folder, file_name=video_name)
         step_and_collect(steps)
-        video_renderer(model, data, duration=sim_duration, video_recorder=video_recorder)
+        tracking_video_renderer(model, data, duration=sim_duration, video_recorder=video_recorder)
     elif mode == "launcher":
         warmup_steps = int(1.0 / timestep)
         step_and_collect(warmup_steps)
@@ -113,7 +114,8 @@ def show_qpos_history(history: list[list[float]]) -> None:
 
 
 def plot_fitness_over_generations(
-    experiment_data: dict[str, Any],
+    experiments_data: dict[str, Any],
+    repetitions: int, 
     population_name: str = "mixed_twisty"
 ) -> None:
     """Plot fitness over generations showing max, average, and min values.
@@ -125,49 +127,50 @@ def plot_fitness_over_generations(
             (e.g., "mixed_twisty", "twisty", "non_twisty")
     """
     if (
-        "generations" not in experiment_data
-        or len(experiment_data["generations"]) == 0
+        "generations" not in experiments_data[0]
+        or len(experiments_data[0]["generations"]) == 0
     ):
         console.log("No generation data found in experiment data.")
         return
 
     generations = []
-    max_fitness = []
-    avg_fitness = []
-    min_fitness = []
-
-    for gen_data in experiment_data["generations"]:
-        generations.append(gen_data["generation"])
+    max_fitness = np.zeros(len(experiments_data[0]["generations"]))
+    avg_fitness = np.zeros(len(experiments_data[0]["generations"]))
+    i = 0
+    for experiment_data in experiments_data:
+        maxs = []
+        means = []
+        for gen_data in experiment_data["generations"]:
+            if i == 0:
+                generations.append(gen_data["generation"])
 
         # Check if the population_name exists in this generation
-        if population_name in gen_data:
-            stats = gen_data[population_name]
-            max_fitness.append(stats["max"])
-            avg_fitness.append(stats["mean"])
-            min_fitness.append(stats["min"])
-        else:
-            msg = (
-                f"Population '{population_name}' "
-                f"not found in generation {gen_data['generation']}"
-            )
-            console.log(msg)
-            return
-
+            if population_name in gen_data:
+                stats = gen_data[population_name]
+                maxs.append(stats["max"])
+                means.append(stats["mean"])
+            else:
+                msg = (
+                    f"Population '{population_name}' "
+                    f"not found in generation {gen_data['generation']}"
+                )
+                console.log(msg)
+                return
+        i += 1
+        for i in range(len(experiment_data["generations"])):
+            max_fitness[i] += maxs[i]
+            avg_fitness[i] += means[i]
+    for i in range(len(max_fitness)):
+        max_fitness[i] = max_fitness[i]/repetitions
+        avg_fitness[i] = avg_fitness[i]/repetitions
     # Create the plot
     plt.figure(figsize=(10, 6))
     plt.plot(
-        generations, max_fitness, "b-",
-        marker="o", markersize=4, label="Max", linewidth=2,
+        generations, max_fitness, marker="o", markersize=4, label="Max", linewidth=2,
     )
     plt.plot(
-        generations, avg_fitness, "purple",
-        marker="s", markersize=3, label="Average", linewidth=2,
+        generations, avg_fitness, marker="o", markersize=4, label="Mean", linewidth=2,
     )
-    plt.plot(
-        generations, min_fitness, "gray",
-        marker="^", markersize=3, label="Min", linewidth=1.5,
-    )
-
     plt.xlabel("Generation No.", fontsize=12)
     plt.ylabel("Fitness", fontsize=12)
     title = f"Fitness over Generations - {population_name.replace('_', ' ').title()}"
@@ -177,6 +180,6 @@ def plot_fitness_over_generations(
     
     # I force integer ticks on x-axis (half generations don't make sense to me)
     plt.gca().xaxis.set_major_locator(plt.MaxNLocator(integer=True))
-    
+    plt.savefig(f"{population_name}_fitness.png")
     plt.tight_layout()
     plt.show()

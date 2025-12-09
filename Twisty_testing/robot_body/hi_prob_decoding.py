@@ -242,9 +242,9 @@ class HighProbabilityDecoder:
             disallowed_faces = all_possible_faces - allowed_faces
             for face in disallowed_faces:
                 # Disable as parent
-                if np.count_nonzero(self.conn_p_space[:, module_idx, face.value]) != 0:
-                    if module_type == ModuleType.NONE:
-                        self.conn_p_space[:, module_idx, face.value] = 0.0
+                # if np.count_nonzero(self.conn_p_space[:, module_idx, face.value]) != 0:
+                    #if module_type == ModuleType.NONE:
+                        # self.conn_p_space[:, module_idx, face.value] = 0.0
                 self.conn_p_space[module_idx, :, face.value] = 0.0
                 # Disable as child
                 self.conn_p_space[:, module_idx, face.value] = 0.0

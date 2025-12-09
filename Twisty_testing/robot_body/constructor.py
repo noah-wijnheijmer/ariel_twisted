@@ -52,7 +52,7 @@ def construct_mjspec_from_graph(graph: DiGraph[Any]) -> CoreModule:
         # Extract module type and rotation from the graph node
         module_type = graph.nodes[node]["type"]
         module_rotation = graph.nodes[node]["rotation"]
-
+        z = 0
         # Create the module based on its type
         match module_type:
             case ModuleType.CORE.name:
@@ -82,11 +82,14 @@ def construct_mjspec_from_graph(graph: DiGraph[Any]) -> CoreModule:
         to_module = edge[1]
         face = graph.edges[edge]["face"]
         # Check if both modules exist (not 'None')
-        if modules[to_module]:
-            modules[from_module].sites[str(ModuleFaces[face])].attach_body(
+        try:
+            if modules[to_module]:
+                modules[from_module].sites[str(ModuleFaces[face])].attach_body(
                 body=modules[to_module].body,
                 prefix=f"{modules[from_module].index}-{modules[to_module].index}-{ModuleFaces[face].value}-",
             )
+        except:
+            return None # type: ignore
 
     core_module = modules[IDX_OF_CORE]
     if isinstance(core_module, CoreModule):
