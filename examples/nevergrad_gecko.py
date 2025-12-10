@@ -272,11 +272,11 @@ if __name__ == "__main__":
     experiment_name = "nn_elu_frwd"
     
     for gecko_type in [
-        gecko,
+        # gecko,
         # gecko_untwisted,
         # gecko_good,
         # gecko_doubletwist,
-        # gecko_doubletwist_turtle,
+        gecko_doubletwist_turtle,
         # gecko_front,
     ]:
         histories = []
@@ -291,6 +291,7 @@ if __name__ == "__main__":
             print(f"  Hidden Layers: {HIDDEN_LAYERS}")
             print(f"  Optimizer: {OPTIMIZER_NAME}")
             print(f"  Budget: {BUDGET}")
+            print(f"seed: {seed}")
             print("-" * 50)
             histories.append(run_nn_experiment(seed=seed, gecko_model=gecko_type, experiment_name=experiment_name))
             
