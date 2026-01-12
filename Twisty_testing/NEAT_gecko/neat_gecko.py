@@ -12,21 +12,15 @@ from mujoco import viewer
 import neat
 
 # Import prebuilt robot phenotypes
-from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko import gecko
-from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_untwisted import (
-    gecko_untwisted,
-)
-from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_good import gecko_good
-from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_front import gecko_front
-from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_doubletwist import (
-    gecko_doubletwist,
-)
-from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_doubletwist_turtle import (
-    gecko_doubletwist_turtle,
-)
+from ariel.body_phenotypes.prebuilt_robots.gecko import gecko
+from ariel.body_phenotypes.prebuilt_robots.gecko_untwisted import gecko_untwisted
+from ariel.body_phenotypes.prebuilt_robots.gecko_good import gecko_good
+from ariel.body_phenotypes.prebuilt_robots.gecko_front import gecko_front
+from ariel.body_phenotypes.prebuilt_robots.gecko_doubletwist import gecko_doubletwist
+from ariel.body_phenotypes.prebuilt_robots.gecko_doubletwist_turtle import gecko_doubletwist_turtle
 
 # Local libraries
-from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
+from ariel.simulation.environments import SimpleFlatWorld
 from ariel.utils.renderers import tracking_video_renderer
 from ariel.utils.video_recorder import VideoRecorder
 from ariel.utils.runners import simple_runner
@@ -38,13 +32,12 @@ from neat_gecko_helper import fitness_function_basic, create_file_name
 
 # --- RANDOM / EXPERIMENT SETUP --- #
 SEED = 42
-STARTING_POSITION = [0, 0, 0.1]
+STARTING_POSITION = [0, 0, 0]
 OPTIMIZER_NAME = "neat"
 
 # NEAT run settings
-GENERATIONS = 50
+GENERATIONS = 10
 CONFIG_FILE_NAME = "neat_gecko_config.txt"
-
 
 def _build_world(robot_model: Callable):
     """Create world, spawn robot, compile model, and attach tracker."""
@@ -54,8 +47,8 @@ def _build_world(robot_model: Callable):
     core = robot_model()
     world.spawn(
         core.spec,
-        spawn_position=STARTING_POSITION.copy(),
-        correct_for_bounding_box=True,
+        position=STARTING_POSITION.copy(),
+        correct_collision_with_floor=True,
     )
 
     model = world.spec.compile()
@@ -122,12 +115,24 @@ def run(
                 output_folder=PATH_TO_VIDEO_FOLDER,
                 file_name=video_name,
             )
+            
             video_recorder._add_timestamp_to_file_name = False
+            
+            # Try to find a body with "core" in its name for tracking
+            body_to_track = None
+            for i in range(model.nbody):
+                body_name = mj.mj_id2name(model, mj.mjtObj.mjOBJ_BODY, i)
+                if body_name and "core" in body_name.lower():
+                    body_to_track = body_name
+                    break
+            
+            # Use tracking renderer with the found body, or with default
             tracking_video_renderer(
                 model=model,
                 data=data,
                 duration=30,
                 video_recorder=video_recorder,
+                geom_to_track=body_to_track or "core",
             )
         case _:
             raise ValueError(f"Mode {mode} not recognized.")
@@ -177,11 +182,8 @@ def run_neat_experiment(
     gc.input_keys = [-i for i in range(1, nn_input_size + 1)]
     gc.output_keys = [i for i in range(nn_output_size)]
 
-    # Set RNG seed (for reproducibility)
-    rng = np.random.RandomState(seed)
-    config.random_state = rng
-
-    pop = neat.Population(config)
+    # Pass seed to Population - seed parameter takes precedence over config file setting
+    pop = neat.Population(config, seed=seed)
     stats = neat.StatisticsReporter()
     best_reporter = BestFitnessReporter()
     pop.add_reporter(neat.StdOutReporter(True))
