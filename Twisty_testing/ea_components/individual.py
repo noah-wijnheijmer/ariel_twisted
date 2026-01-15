@@ -15,7 +15,7 @@ from robot_body.body_config import (
 from robot_body.hi_prob_decoding import HighProbabilityDecoder, save_graph_as_json
 import os
 from robot_body.constructor import construct_mjspec_from_graph
-from ea_components.evaluation import run_for_fitness
+from ea_components.evaluation_amphi import run_for_fitness
 # Global constants
 SEED = 41
 RNG = np.random.default_rng(SEED)

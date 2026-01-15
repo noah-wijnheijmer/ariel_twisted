@@ -4,7 +4,7 @@ from ea_components.evolution import evolve_generation
 from robot_body.constructor import construct_mjspec_from_graph
 from robot_body.hi_prob_decoding import save_graph_as_json
 from data_storing.data_store import (initialize_experiment_data, calculate_generation_statistics, finalize_experiment_data, save_checkpoint, load_checkpoint)
-from simulation.visualization import (visualize_champ, show_qpos_history, plot_fitness_over_generations)
+from simulation.visualization_amphi import (visualize_champ, show_qpos_history, plot_fitness_over_generations)
 from rich.console import Console
 import numpy as np
 from typing import Any
@@ -18,11 +18,11 @@ CWD = Path.cwd()
 DATA = Path(CWD / "__data__" / SCRIPT_NAME)
 DATA.mkdir(exist_ok=True)
 DATA_SETTINGS = [DATA, SCRIPT_NAME]
-SEED = 41
+SEED = 51
 RNG = np.random.default_rng(SEED)
 EVOLUTION_CONFIG = {
-    "generations": 3,
-    "population_size": 10,
+    "generations": 20,
+    "population_size": 100,
     "save_evolution_graphs": True,
     "sample_diversity_every": 10,
     "checkpoint_every": 1,  # Save checkpoint every N generations
@@ -31,7 +31,7 @@ EVOLUTION_CONFIG = {
     "checkpoint_gen": 5, # which generation to load from.
     "start_id": 91, # if old graph data should be kept, make it some higher number.
     "twisty_evo": True,
-    "mixed": False,
+    "mixed": True,
     "p_twisty": 0.5,
 }
 # if correcting for bounding box, the height will be reduced to zero. Otherwise choose a custom z value for the height.
@@ -192,9 +192,9 @@ def run_evolution_experiment(
     console.log(f"[bold green]🏆 Champion Fitness: {champion_fitness:.3f}")
 
     # Save champion graph to file
-    champion_filename = f"champion_{champion_type.lower()}_robot{experiment_id+10}.json"
+    champion_filename = f"champion_{champion_type.lower()}_robot{experiment_id+120}.json"
     brain = champion.brain_genotype
-    filename = f"champ_{champion_type.lower()}_brain{experiment_id+10}.json"
+    filename = f"champ_{champion_type.lower()}_brain{experiment_id+120}.json"
 
     # Open the file in write mode and save the data
     with open(DATA/filename, 'w') as file:
@@ -207,8 +207,8 @@ def run_evolution_experiment(
 def main() -> None:
     """Entry point for evolutionary experiment."""
     experiments_data = []
-    repetitions = 3
-    run_type = "twisty"
+    repetitions = 30
+    run_type = "mixed_amphi"
     for i in range(repetitions):
         champion, experiment_data = run_evolution_experiment(seed=SEED+i, experiment_id=i, run_type=run_type)
         experiments_data.append(experiment_data)

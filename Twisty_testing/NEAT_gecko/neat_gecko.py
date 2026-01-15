@@ -12,21 +12,15 @@ from mujoco import viewer
 import neat
 
 # Import prebuilt robot phenotypes
-from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko import gecko
-from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_untwisted import (
-    gecko_untwisted,
-)
-from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_good import gecko_good
-from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_front import gecko_front
-from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_doubletwist import (
-    gecko_doubletwist,
-)
-from ariel.body_phenotypes.robogen_lite.prebuilt_robots.gecko_doubletwist_turtle import (
-    gecko_doubletwist_turtle,
-)
+from robot_body.prebuilt.gecko import gecko
+from robot_body.prebuilt.gecko_untwisted import gecko_untwisted
+from robot_body.prebuilt.gecko_good import gecko_good
+from robot_body.prebuilt.gecko_front import gecko_front
+from robot_body.prebuilt.gecko_doubletwist import gecko_doubletwist
+from robot_body.prebuilt.gecko_doubletwist_turtle import gecko_doubletwist_turtle
 
 # Local libraries
-from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
+from environments._simple_flat import SimpleFlatWorld
 from ariel.utils.renderers import tracking_video_renderer
 from ariel.utils.video_recorder import VideoRecorder
 from ariel.utils.runners import simple_runner
@@ -52,11 +46,7 @@ def _build_world(robot_model: Callable):
 
     world = SimpleFlatWorld()
     core = robot_model()
-    world.spawn(
-        core.spec,
-        spawn_position=STARTING_POSITION.copy(),
-        correct_for_bounding_box=True,
-    )
+    world.spawn(core.spec, spawn_z=STARTING_POSITION[2], spawn_xy=(STARTING_POSITION[0], STARTING_POSITION[1]), correct_for_bounding_box=True)
 
     model = world.spec.compile()
     data = mj.MjData(model)  # type: ignore
@@ -189,12 +179,54 @@ def run_neat_experiment(
     pop.add_reporter(best_reporter)
 
     def eval_genomes(genomes, cfg):
+        # 1. BUILD THE WORLD ONCE
+        world, model, data, tracker = _build_world(gecko_model)
+        
+        # Create a controller instance once (we will update the callback later)
+        ctrl = Controller(
+            controller_callback_function=None, # Placeholder
+            tracker=tracker,
+        )
+        mj.set_mjcb_control(lambda m, d: ctrl.set_control(m, d))
+
         for gid, genome in genomes:
+            # 2. CREATE NET
             if not cfg.genome_config.feed_forward:
                 net = neat.nn.RecurrentNetwork.create(genome, cfg)
+                if hasattr(net, "reset"): net.reset()
             else:
                 net = neat.nn.FeedForwardNetwork.create(genome, cfg)
-            genome.fitness = run(gecko_model, net, mode="simple")
+
+            # 3. UPDATE CONTROLLER CALLBACK
+            # Update the controller to use the current genome's network
+            ctrl.controller_callback_function = _make_control_fn(net)
+
+            # 4. RESET SIMULATION (Fast)
+            mj.mj_resetData(model, data)
+            
+            # Reset the robot to spawn position
+            # (You might need to manually set qpos[0:3] to STARTING_POSITION if mj_resetData puts it at 0,0,0)
+            data.qpos[0] = STARTING_POSITION[0]
+            data.qpos[1] = STARTING_POSITION[1]
+            data.qpos[2] = STARTING_POSITION[2]
+            
+            # 5. RUN SIMULATION
+            # You need to modify simple_runner to accept existing model/data 
+            # without re-initializing, or just run the stepping loop here:
+            
+            # --- Inline simple runner logic for speed ---
+            duration = 15
+            steps = int(duration / model.opt.timestep)
+            
+            for _ in range(steps):
+                mj.mj_step(model, data)
+                
+            # 6. CALCULATE FITNESS
+            history = tracker.history["xpos"][0] # Ensure tracker is compatible with reset
+            genome.fitness = fitness_function_basic(history)
+            
+            # Reset tracker history for next run if necessary
+            tracker.reset() # You may need to implement this method in your Tracker class
 
     start = time.time()
     winner = pop.run(eval_genomes, generations)

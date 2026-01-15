@@ -79,7 +79,7 @@ def finalize_experiment_data(
     }
     
     # Save experiment data
-    experiment_filename = f"experiment_data_{champion_type.lower()}_champion{experiment_id+10}.json"
+    experiment_filename = f"experiment_data_{champion_type.lower()}_champion{experiment_id+120}.json"
     with open(data / experiment_filename, "w", encoding="utf-8") as f:
         json.dump(experiment_data, f, indent=2)
     console.log(f"📈 Complete experiment data saved to: {data / experiment_filename}")
