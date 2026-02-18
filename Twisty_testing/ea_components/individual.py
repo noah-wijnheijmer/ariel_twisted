@@ -16,6 +16,7 @@ from robot_body.hi_prob_decoding import HighProbabilityDecoder, save_graph_as_js
 import os
 from robot_body.constructor import construct_mjspec_from_graph
 from ea_components.evaluation_amphi import run_for_fitness
+import concurrent.futures
 # Global constants
 SEED = 41
 RNG = np.random.default_rng(SEED)
@@ -296,9 +297,30 @@ def create_individual_from_matrices(
     ind.twisty = twisty
     
     return ind
+def evaluate_single_wrapper(args):
+    # Unpack arguments
+    individual, rng, correct, z, xy, target, brain = args
+    
+    robot = construct_mjspec_from_graph(individual.graph)
+    if robot is None:
+        return 0.0
+    
+    fitness = run_for_fitness(robot, individual, correct, rng, z, xy, target, brain)
+    return fitness
 
 def evaluate_population(population: list[Individual], rng, correct_for_bounding: bool, spawn_z: float, spawn_xy: list[float] ,target_pos: list[float], brain_type: str) -> None:
     """Evaluate fitness for all individuals in population."""
+    tasks = [
+        (ind, rng, correct_for_bounding, spawn_z, spawn_xy, target_pos, brain_type) 
+        for ind in population
+    ]
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        # map runs the function over the list of tasks
+        results = list(executor.map(evaluate_single_wrapper, tasks))
+    for ind, fitness in zip(population, results):
+        ind.fitness = fitness
+        print(f"Individual (twisty={ind.twisty}) fitness: {fitness:.3f}")
+def eval2(population: list[Individual], rng, correct_for_bounding: bool, spawn_z: float, spawn_xy: list[float] ,target_pos: list[float], brain_type: str) -> None:
     for individual in population:
         
         robot = construct_mjspec_from_graph(individual.graph)

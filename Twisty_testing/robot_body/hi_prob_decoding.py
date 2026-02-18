@@ -298,6 +298,29 @@ def save_graph_as_json(
     with Path(save_file).open("w", encoding="utf-8") as f:
         f.write(json_string)
 
+def save_population_graph_as_json(
+    graphs: list[DiGraph[Any]],
+    save_file: Path | str | None = None,
+) -> None:
+    """
+    Save the directed graphs of a population as a JSON file.
+
+    Parameters
+    ----------
+    graph : list[DiGraph]
+        The directed graphs to save.
+    save_file : Path | str | None, optional
+        The file path to save the graph JSON, by default None
+    """
+    if save_file is None:
+        return
+    pop_data = []
+    for graph in graphs:
+        data = json_graph.node_link_data(graph, edges="edges")
+        pop_data.append(data)
+    json_string = json.dumps(pop_data, indent=4)
+    with Path(save_file).open("w", encoding="utf-8") as f:
+        f.write(json_string)
 
 def load_graph_from_json(
     load_file: Path | str,
